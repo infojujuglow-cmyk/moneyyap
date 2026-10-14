@@ -21,12 +21,14 @@ const accounts = [
 const context = {
   accounts, accountIdentifiers: [], counterparties: [], classificationRules: [], recentTransactions: [], selectedSpaceId: 'space', defaultSpaceId: 'space',
   categories: [
-    { id: 'delivery', name: 'Delivery', type: 'expense', space_id: null, parent_id: null },
-    { id: 'lunch', name: 'Lunch', type: 'expense', space_id: null, parent_id: null },
-    { id: 'atm-fees', name: 'Bank/ATM Fees', type: 'expense', space_id: null, parent_id: null },
-    { id: 'transportation', name: 'Transportation', type: 'expense', space_id: null, parent_id: null },
-    { id: 'fuel', name: 'Fuel', type: 'expense', space_id: null, parent_id: 'transportation' },
-    { id: 'income', name: 'Income', type: 'income', space_id: null, parent_id: null },
+    { id: 'delivery', name: 'Delivery', type: 'expense', space_id: 'space', parent_id: null },
+    { id: 'lunch', name: 'Lunch', type: 'expense', space_id: 'space', parent_id: null },
+    { id: 'atm-fees', name: 'Bank/ATM Fees', type: 'expense', space_id: 'space', parent_id: null },
+    { id: 'transportation', name: 'Transportation', type: 'expense', space_id: 'space', parent_id: null },
+    { id: 'fuel', name: 'Fuel', type: 'expense', space_id: 'space', parent_id: 'transportation' },
+    { id: 'income', name: 'Income', type: 'income', space_id: 'space', parent_id: null },
+    { id: 'fuel-income', name: 'Fuel', type: 'income', space_id: 'space', parent_id: null },
+    { id: 'fuel-other-space', name: 'Fuel', type: 'expense', space_id: 'other-space', parent_id: null },
   ],
 };
 const facts = (changes = {}) => ({
@@ -193,6 +195,7 @@ const defaultSpaceContext = {
   selectedSpaceId: null,
   defaultSpaceId: 'default-space',
   accounts: accounts.map((account) => account.id === 'cash-on-hand' ? { ...account, space_id: null } : account),
+  categories: context.categories.map((category) => ({ ...category, space_id: category.space_id === 'space' ? 'default-space' : category.space_id })),
 };
 const defaultSpaceFacts = enrichExtractedFactsFromMessage(facts({ amount: 0, direction: 'unknown', source_institution: null, source_account_label: null, destination_institution: null, destination_account_label: null, note: null, original_message: '1k gas using cash' }), '1k gas using cash', defaultSpaceContext);
 const defaultSpaceCashExpense = classifyExtractedFacts(defaultSpaceFacts, defaultSpaceContext);
@@ -207,6 +210,19 @@ assert.deepEqual(
   [cashIncome.financial_effect, cashIncome.account_from_id, cashIncome.account_to_id],
   ['income', null, 'cash-on-hand'],
 );
+
+const refund = classifyExtractedFacts(facts({
+  direction: 'incoming', source_institution: null, source_account_label: null,
+  destination_institution: 'BPI', destination_account_label: 'Business',
+  note: 'Coffee refund', original_message: 'Received coffee refund in BPI Business',
+}), context);
+assert.deepEqual(
+  [refund.transaction_type, refund.financial_effect, refund.category_id, refund.account_to_id],
+  ['refund', 'income', null, 'bpi-business'],
+  'refunds keep their incoming balance effect but must not use an income category',
+);
+assert.ok(refund.candidate_category_ids.every((id) => context.categories.find((category) => category.id === id)?.type === 'expense'));
+assert.ok(refund.candidate_category_ids.every((id) => context.categories.find((category) => category.id === id)?.space_id === 'space'));
 
 const feePartsWithoutSource = classifyMessage('Withdraw 10000 with 18 peso fee');
 assert.deepEqual(

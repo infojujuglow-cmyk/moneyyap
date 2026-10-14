@@ -40,6 +40,7 @@ export default function TransactionsScreen() {
 
   const selectedAccount = accounts.find((item) => item.id === accountId)?.name;
   const selectedCategory = categories.find((item) => item.id === categoryId)?.name;
+  const filterCategoryType = type === 'income' ? 'income' : type === 'expense' || type === 'refund' ? 'expense' : null;
   return (
     <Screen title="Transactions" subtitle={`${filtered.length} entries · everything in one place`} contentStyle={desktop ? styles.wideContent : undefined} right={desktop ? <Button label="Add transaction" icon="add" onPress={() => router.push('/manual-transaction')} /> : <Pressable onPress={() => router.push('/manual-transaction')}><IconCircle name="add" background={colors.mint} /></Pressable>}>
       <SpaceSelector />
@@ -50,13 +51,13 @@ export default function TransactionsScreen() {
           <Chip label={thisMonth ? 'This month' : 'All time'} selected={thisMonth} icon="calendar-outline" onPress={() => setThisMonth((value) => !value)} />
           <Chip label={type ? type.replaceAll('_', ' ') : 'Type'} selected={Boolean(type)} icon="swap-vertical-outline" onPress={() => setPicker(picker === 'type' ? null : 'type')} />
           <Chip label={selectedAccount ?? 'Account'} selected={Boolean(accountId)} icon="wallet-outline" onPress={() => setPicker(picker === 'account' ? null : 'account')} />
-          <Chip label={selectedCategory ?? 'Category'} selected={Boolean(categoryId)} icon="pricetag-outline" onPress={() => setPicker(picker === 'category' ? null : 'category')} />
+          <Chip label={selectedCategory ?? (filterCategoryType ? 'Category' : 'Choose type first')} selected={Boolean(categoryId)} icon="pricetag-outline" onPress={() => setPicker(filterCategoryType ? picker === 'category' ? null : 'category' : 'type')} />
         </ScrollView>
         {picker && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.optionRow}>
-          <Chip label="All" selected={(picker === 'type' && !type) || (picker === 'account' && !accountId) || (picker === 'category' && !categoryId)} onPress={() => { if (picker === 'type') setType(null); if (picker === 'account') setAccountId(null); if (picker === 'category') setCategoryId(null); }} />
-          {picker === 'type' && ([['expense', 'Expenses'], ['income', 'Income'], ['transfer', 'Internal transfers'], ['credit_card_payment', 'Card payments'], ['refund', 'Refunds']] as [TransactionType, string][]).map(([value, label]) => <Chip key={value} label={label} selected={type === value} onPress={() => setType(value)} />)}
+          <Chip label="All" selected={(picker === 'type' && !type) || (picker === 'account' && !accountId) || (picker === 'category' && !categoryId)} onPress={() => { if (picker === 'type') { setType(null); setCategoryId(null); } if (picker === 'account') setAccountId(null); if (picker === 'category') setCategoryId(null); }} />
+          {picker === 'type' && ([['expense', 'Expenses'], ['income', 'Income'], ['transfer', 'Internal transfers'], ['credit_card_payment', 'Card payments'], ['refund', 'Refunds']] as [TransactionType, string][]).map(([value, label]) => <Chip key={value} label={label} selected={type === value} onPress={() => { setType(value); setCategoryId(null); }} />)}
           {picker === 'account' && accounts.map((item) => <Chip key={item.id} label={item.name} selected={accountId === item.id} onPress={() => setAccountId(item.id)} />)}
-          {picker === 'category' && categories.filter((item) => item.type === 'expense').map((item) => <Chip key={item.id} label={item.name} selected={categoryId === item.id} onPress={() => setCategoryId(item.id)} />)}
+          {picker === 'category' && filterCategoryType && categories.filter((item) => item.type === filterCategoryType && item.spaceId === selectedSpaceId && !item.isArchived).map((item) => <Chip key={item.id} label={item.name} selected={categoryId === item.id} onPress={() => setCategoryId(item.id)} />)}
         </ScrollView>}
       </View>
 

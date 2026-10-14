@@ -140,7 +140,7 @@ const executeFinanceQuery = async (supabase: { from: (table: string) => any }, w
   }
   const rows: FinanceTransactionRow[] = []; const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
-    let query = supabase.from('transactions').select('id,financial_effect,amount,transaction_date,account_from_id,account_to_id,category_id,merchant,counterparty_name,space_id').eq('workspace_id', workspaceId).order('transaction_date', { ascending: false }).range(from, from + pageSize - 1);
+    let query = supabase.from('transactions').select('id,type,financial_effect,amount,transaction_date,account_from_id,account_to_id,category_id,merchant,counterparty_name,space_id').eq('workspace_id', workspaceId).order('transaction_date', { ascending: false }).range(from, from + pageSize - 1);
     if (context.spaceScope !== 'all' && context.spaceId) query = query.eq('space_id', context.spaceId);
     const { data, error } = await query; if (error) throw error; rows.push(...((data ?? []) as FinanceTransactionRow[])); if (!data || data.length < pageSize) break;
   }
@@ -150,10 +150,15 @@ const executeFinanceQuery = async (supabase: { from: (table: string) => any }, w
   const expense = sumFinanceRows(filtered, 'expense'); const income = sumFinanceRows(filtered, 'income');
   let amount = context.metric === 'income_total' ? income : context.metric === 'net_cash_flow' ? income - expense : expense; let breakdown: { id: string; label: string; amount: number }[] = [];
   if (context.metric === 'spending_by_category') {
-    const totals = new Map<string, number>(); for (const row of filtered.filter((item) => item.financial_effect === 'expense')) totals.set(row.category_id ?? 'uncategorized', (totals.get(row.category_id ?? 'uncategorized') ?? 0) + Number(row.amount));
+    const totals = new Map<string, number>(); for (const row of filtered.filter((item) => item.financial_effect === 'expense' || item.type === 'refund')) totals.set(row.category_id ?? 'uncategorized', (totals.get(row.category_id ?? 'uncategorized') ?? 0) + (row.type === 'refund' ? -Number(row.amount) : Number(row.amount)));
     breakdown = [...totals].map(([id, total]) => ({ id, label: categories.find((item) => item.id === id)?.name ?? 'Uncategorized', amount: total })).sort((a, b) => b.amount - a.amount);
   } else if (context.metric === 'spending_by_account') {
-    const totals = new Map<string, number>(); for (const row of filtered.filter((item) => item.financial_effect === 'expense' && item.account_from_id)) totals.set(row.account_from_id!, (totals.get(row.account_from_id!) ?? 0) + Number(row.amount));
+    const totals = new Map<string, number>();
+    const accountRows = filtered.filter((item) => (item.financial_effect === 'expense' && item.account_from_id) || (item.type === 'refund' && item.account_to_id));
+    for (const row of accountRows) {
+      const accountId = row.type === 'refund' ? row.account_to_id! : row.account_from_id!;
+      totals.set(accountId, (totals.get(accountId) ?? 0) + (row.type === 'refund' ? -Number(row.amount) : Number(row.amount)));
+    }
     breakdown = [...totals].map(([id, total]) => ({ id, label: accounts.find((item) => item.id === id)?.name ?? 'Account', amount: total })).sort((a, b) => b.amount - a.amount);
   } else if (context.metric === 'compare_periods' && context.dateRange) {
     const second = context.comparison?.second ?? context.dateRange; const first = context.comparison?.first ?? previousPeriod(second);
@@ -218,7 +223,8 @@ Deno.serve(async (request) => {
       const patch = route.query_patch ?? localQueryPatch(message, accounts, categories, Boolean(previousContext.metric)); const changes: Partial<FinanceQueryContext> = {}; if (patch.metric) changes.metric = patch.metric; else if (!previousContext.metric) changes.metric = 'expense_total'; if (patch.transaction_type) changes.transactionType = patch.transaction_type; if (patch.space_scope) changes.spaceScope = patch.space_scope;
       const requestedSpace = findEntity(patch.space_name, spaces); const defaultSpace = spaces.find((item) => item.id === selectedSpaceId) ?? spaces[0]; if (patch.space_scope === 'all') changes.spaceId = null; else if (requestedSpace) changes.spaceId = requestedSpace.id; else if (selectedSpaceId) { changes.spaceId = selectedSpaceId; changes.spaceScope = 'current'; } else if (!previousContext.spaceId && defaultSpace) changes.spaceId = defaultSpace.id;
       if (patch.account_scope === 'all') changes.accountIds = 'all'; if (patch.account_scope === 'specific') { const matched = patch.account_names.map((name) => findEntity(name, accounts)).filter((item): item is Entity => Boolean(item)); if (matched.length) changes.accountIds = matched.map((item) => item.id); else clarification = { type: 'account', question: 'Which account should I use for this query?', accountIds: accounts.map((item) => item.id) }; }
-      const category = findEntity(patch.category_name, categories); if (category) changes.categoryId = category.id; if (patch.exclude_category_names.length) changes.excludeCategoryIds = patch.exclude_category_names.map((name) => findEntity(name, categories)?.id).filter((id): id is string => Boolean(id)); if (patch.merchant) changes.merchant = patch.merchant; if (patch.counterparty) changes.counterparty = patch.counterparty; if (patch.grouping) changes.grouping = patch.grouping;
+      const resolvedMetric = changes.metric ?? previousContext.metric ?? 'expense_total'; const queryCategoryType = patch.transaction_type === 'income' || resolvedMetric === 'income_total' ? 'income' : 'expense'; const querySpaceId = changes.spaceId ?? previousContext.spaceId ?? defaultSpace?.id; const eligibleCategories = categories.filter((item) => item.type === queryCategoryType && (changes.spaceScope === 'all' || !querySpaceId || item.space_id === querySpaceId));
+      const category = findEntity(patch.category_name, eligibleCategories); if (category) changes.categoryId = category.id; if (patch.exclude_category_names.length) changes.excludeCategoryIds = patch.exclude_category_names.map((name) => findEntity(name, eligibleCategories)?.id).filter((id): id is string => Boolean(id)); if (patch.merchant) changes.merchant = patch.merchant; if (patch.counterparty) changes.counterparty = patch.counterparty; if (patch.grouping) changes.grouping = patch.grouping;
       changes.dateRange = resolveDatePatch(patch, now, timezone, previousContext.dateRange); queryContext = mergeFinanceQueryContext(previousContext, changes); if (patch.comparison === 'previous_period' && queryContext.dateRange) queryContext.comparison = { first: previousPeriod(queryContext.dateRange), second: queryContext.dateRange };
       if (!clarification) { queryResult = await executeFinanceQuery(supabase, workspaceId, queryContext, accounts, categories); reply = buildFinanceReply(queryContext, queryResult as { amount: number; count: number; breakdown: { label: string; amount: number }[] }, accounts, categories, timezone); messageType = 'finance_answer'; } else { reply = String(clarification.question); messageType = 'clarification'; }
     } else if (route.intent === 'record_transaction' || isTransactionClarification) {

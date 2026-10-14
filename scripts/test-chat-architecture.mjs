@@ -92,17 +92,19 @@ assert.deepEqual(mergeFinanceQueryContext(original, { dateRange: july }), { ...o
 assert.deepEqual(mergeFinanceQueryContext(original, { accountIds: ['bpi-business'] }), { ...original, accountIds: ['bpi-business'] });
 
 const rows = [
-  { id: '1', financial_effect: 'expense', amount: 500, transaction_date: '2026-08-05T00:00:00.000Z', account_from_id: 'bpi-business', account_to_id: null, category_id: 'food' },
-  { id: '2', financial_effect: 'expense', amount: 180, transaction_date: '2026-08-06T00:00:00.000Z', account_from_id: 'bpi-personal', account_to_id: null, category_id: 'food' },
-  { id: '3', financial_effect: 'expense', amount: 900, transaction_date: '2026-08-07T00:00:00.000Z', account_from_id: 'other-space-account', account_to_id: null, category_id: 'food' },
-  { id: '4', financial_effect: 'internal_transfer', amount: 10000, transaction_date: '2026-08-08T00:00:00.000Z', account_from_id: 'bpi-business', account_to_id: 'bpi-personal', category_id: null },
-  { id: '5', financial_effect: 'income', amount: 50000, transaction_date: '2026-08-09T00:00:00.000Z', account_from_id: null, account_to_id: 'bpi-business', category_id: 'income' },
+  { id: '1', type: 'expense', financial_effect: 'expense', amount: 500, transaction_date: '2026-08-05T00:00:00.000Z', account_from_id: 'bpi-business', account_to_id: null, category_id: 'food' },
+  { id: '2', type: 'expense', financial_effect: 'expense', amount: 180, transaction_date: '2026-08-06T00:00:00.000Z', account_from_id: 'bpi-personal', account_to_id: null, category_id: 'food' },
+  { id: '3', type: 'expense', financial_effect: 'expense', amount: 900, transaction_date: '2026-08-07T00:00:00.000Z', account_from_id: 'other-space-account', account_to_id: null, category_id: 'food' },
+  { id: '4', type: 'internal_transfer', financial_effect: 'internal_transfer', amount: 10000, transaction_date: '2026-08-08T00:00:00.000Z', account_from_id: 'bpi-business', account_to_id: 'bpi-personal', category_id: null },
+  { id: '5', type: 'income', financial_effect: 'income', amount: 50000, transaction_date: '2026-08-09T00:00:00.000Z', account_from_id: null, account_to_id: 'bpi-business', category_id: 'income' },
+  { id: '6', type: 'refund', financial_effect: 'income', amount: 80, transaction_date: '2026-08-10T00:00:00.000Z', account_from_id: null, account_to_id: 'bpi-business', category_id: 'food' },
 ];
 const filtered = filterFinanceRows(rows, original, ['bpi-business', 'bpi-personal']);
-assert.equal(sumFinanceRows(filtered, 'expense'), 680, 'deterministic expense total must equal seeded rows exactly');
+assert.equal(sumFinanceRows(filtered, 'expense'), 600, 'refunds must reduce deterministic expense totals');
 assert.equal(filtered.some((row) => row.financial_effect === 'internal_transfer'), false, 'internal transfers stay out of expense analytics');
 assert.equal(sumFinanceRows([rows[3]], 'expense'), 0, 'internal transfers must not increase expenses');
 assert.equal(sumFinanceRows([rows[3]], 'income'), 0, 'internal transfers must not increase income');
+assert.equal(sumFinanceRows([rows[4], rows[5]], 'income'), 50000, 'refunds must not inflate income totals');
 
 const parsedCard = await readFile('src/components/ParsedCard.tsx', 'utf8');
 assert.match(parsedCard, /clarification\?\.type === 'account'/, 'account clarification rendering must be explicitly typed');

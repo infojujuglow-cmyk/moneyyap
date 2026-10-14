@@ -494,10 +494,9 @@ const categoryAliases: Record<string, string[]> = {
 
 const includesPhrase = (text: string, phrase: string) => Boolean(phrase && ` ${text} `.includes(` ${phrase} `));
 
-const chooseCategory = (facts: ExtractedTransactionFacts, counterparty: ReturnType<typeof findCounterparty>, context: ClassificationContext, effect: FinancialEffect): CategoryMatch | null => {
-  if (effect === 'internal_transfer' || effect === 'adjustment') return null;
-  const categoryType = effect === 'income' ? 'income' : 'expense';
-  const valid = (id: string | null) => context.categories.find((item) => item.id === id && item.type === categoryType && (!item.space_id || item.space_id === context.selectedSpaceId));
+const chooseCategory = (facts: ExtractedTransactionFacts, counterparty: ReturnType<typeof findCounterparty>, context: ClassificationContext, categoryType: 'expense' | 'income' | null): CategoryMatch | null => {
+  if (!categoryType || !context.selectedSpaceId) return null;
+  const valid = (id: string | null) => context.categories.find((item) => item.id === id && item.type === categoryType && item.space_id === context.selectedSpaceId);
   if (counterparty?.default_category_id && valid(counterparty.default_category_id)) return { id: counterparty.default_category_id, confidence: Math.max(0.9, counterparty.confidence || 0), source: 'counterparty' };
 
   const semanticText = normalizeWords([facts.recipient_name, facts.destination_account_label, facts.note, facts.original_message].filter(Boolean).join(' '));
@@ -511,7 +510,7 @@ const chooseCategory = (facts: ExtractedTransactionFacts, counterparty: ReturnTy
     if (recent?.category_id) return { id: recent.category_id, confidence: 0.92, source: 'history' };
   }
 
-  const eligible = context.categories.filter((item) => item.type === categoryType && (!item.space_id || item.space_id === context.selectedSpaceId));
+  const eligible = context.categories.filter((item) => item.type === categoryType && item.space_id === context.selectedSpaceId);
   const ranked = eligible.map((item) => {
     const categoryName = normalizeWords(item.name);
     const compactName = normalize(item.name);
@@ -532,7 +531,7 @@ const chooseCategory = (facts: ExtractedTransactionFacts, counterparty: ReturnTy
   const best = ranked[0];
   const second = ranked[1];
   if (best && best.confidence >= 0.88 && (!second || second.confidence < best.confidence - 0.03)) return best;
-  if (effect === 'income') {
+  if (categoryType === 'income') {
     const genericIncome = eligible.find((item) => !item.parent_id && normalize(item.name) === 'income');
     if (genericIncome) return { id: genericIncome.id, confidence: 0.9, source: 'semantic' };
   }
@@ -567,6 +566,8 @@ export const classifyExtractedFacts = (inputFacts: ExtractedTransactionFacts, co
   const destination = bestAccountMatch(context.accounts, context.accountIdentifiers, facts.destination_institution, facts.destination_account_label, facts.destination_account_last4, facts.destination_identifier);
   const counterparty = findCounterparty(facts, context);
   const direction = facts.direction;
+  const movementText = normalizeWords([facts.note, facts.original_message, facts.bank_transaction_label].filter(Boolean).join(' '));
+  const isRefund = direction === 'incoming' && /\b(refund|refunded|reimbursement|reimbursed|cashback|chargeback)\b/.test(movementText);
   const sourceOwned = Boolean(source && !source.ambiguous && source.score >= 0.82);
   const destinationOwned = Boolean(destination && !destination.ambiguous && destination.score >= 0.90) || Boolean(counterparty?.type === 'own_account' && counterparty.owned_account_id);
   const destinationAccount = counterparty?.type === 'own_account' && counterparty.owned_account_id
@@ -588,7 +589,7 @@ export const classifyExtractedFacts = (inputFacts: ExtractedTransactionFacts, co
   let accountToId: string | null = null;
 
   if (direction === 'incoming') {
-    financialEffect = 'income'; ownershipStatus = 'external'; transactionType = 'income';
+    financialEffect = 'income'; ownershipStatus = 'external'; transactionType = isRefund ? 'refund' : 'income';
     accountToId = destinationOwned ? destinationAccount?.id ?? null : sourceOwned ? source?.account.id ?? null : null;
   } else if (differentOwnedAccounts) {
     financialEffect = 'internal_transfer'; ownershipStatus = 'owned';
@@ -604,10 +605,11 @@ export const classifyExtractedFacts = (inputFacts: ExtractedTransactionFacts, co
   }
 
   const spaceId = context.selectedSpaceId ?? source?.account.space_id ?? destinationAccount?.space_id ?? context.defaultSpaceId ?? null;
-  const categoryMatch = chooseCategory(facts, counterparty, { ...context, selectedSpaceId: spaceId }, financialEffect);
+  const categoryType = transactionType === 'refund' || financialEffect === 'expense' ? 'expense' : transactionType === 'income' ? 'income' : null;
+  const categoryMatch = chooseCategory(facts, counterparty, { ...context, selectedSpaceId: spaceId }, categoryType);
   const categoryId = categoryMatch?.id ?? null;
-  const candidateCategories = financialEffect === 'expense' || financialEffect === 'income'
-    ? context.categories.filter((item) => item.type === financialEffect && (!item.space_id || item.space_id === spaceId)).map((item) => item.id)
+  const candidateCategories = categoryType && spaceId
+    ? context.categories.filter((item) => item.type === categoryType && item.space_id === spaceId).map((item) => item.id)
     : [];
 
   let question: string | null = null;
@@ -630,8 +632,8 @@ export const classifyExtractedFacts = (inputFacts: ExtractedTransactionFacts, co
     candidates = context.accounts.map((item) => item.id);
   } else if (!spaceId) {
     question = 'Which Space is this for?';
-  } else if ((financialEffect === 'expense' || financialEffect === 'income') && !categoryId && movementKind !== 'fee') {
-    question = financialEffect === 'expense' ? 'What was this for?' : 'What kind of income was this?';
+  } else if (categoryType && !categoryId && movementKind !== 'fee') {
+    question = transactionType === 'refund' ? 'Which original expense category should this refund reduce?' : financialEffect === 'expense' ? 'What was this for?' : 'What kind of income was this?';
   }
 
   const baseConfidence = Math.max(0, Math.min(1, Number(facts.confidence) || 0));

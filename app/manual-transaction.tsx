@@ -77,7 +77,7 @@ export default function ManualTransactionScreen() {
   const effectiveAccountId = accountId && sourceAccounts.some((account) => account.id === accountId) ? accountId : rankedAccounts[0]?.id ?? null;
   const destinationAccounts = useMemo(() => spaceAccounts.filter((account) => account.id !== effectiveAccountId && (type !== 'credit_card_payment' || account.type === 'credit_card')), [effectiveAccountId, spaceAccounts, type]);
   const categoryType = type === 'income' ? 'income' : 'expense';
-  const availableCategories = useMemo(() => categories.filter((category) => !category.isArchived && category.type === categoryType && (!category.spaceId || category.spaceId === spaceId)), [categories, categoryType, spaceId]);
+  const availableCategories = useMemo(() => categories.filter((category) => !category.isArchived && category.type === categoryType && category.spaceId === spaceId), [categories, categoryType, spaceId]);
   const rankedDestinations = useMemo(() => rankByHistory(destinationAccounts, transactions, spaceId, merchant, (transaction) => transaction.accountToId, (account) => account.id), [destinationAccounts, merchant, spaceId, transactions]);
   const rankedCategories = useMemo(() => rankByHistory(availableCategories, transactions, spaceId, merchant, (transaction) => transaction.categoryId, (category) => category.id), [availableCategories, merchant, spaceId, transactions]);
   const effectiveDestinationId = destinationId && destinationAccounts.some((account) => account.id === destinationId) ? destinationId : rankedDestinations[0]?.id ?? null;
@@ -93,8 +93,8 @@ export default function ManualTransactionScreen() {
   };
   const originalMatch = useMemo(() => {
     if (type !== 'refund' || !normalize(merchant)) return null;
-    return transactions.find((transaction) => transaction.financialEffect === 'expense' && normalize(transaction.counterpartyName || transaction.merchant) === normalize(merchant)) ?? null;
-  }, [merchant, transactions, type]);
+    return transactions.find((transaction) => transaction.spaceId === spaceId && transaction.financialEffect === 'expense' && normalize(transaction.counterpartyName || transaction.merchant) === normalize(merchant)) ?? null;
+  }, [merchant, spaceId, transactions, type]);
   const parsedAmount = Number(amount.replace(/,/g, ''));
   const needsCategory = type === 'expense' || type === 'income' || type === 'refund';
   const valid = Boolean(spaceId && effectiveAccountId && parsedAmount > 0 && (!needsCategory || effectiveCategoryId) && (!movesMoney || effectiveDestinationId && effectiveAccountId !== effectiveDestinationId));

@@ -256,6 +256,13 @@ export function FinanceProvider({ children }: PropsWithChildren) {
     const referenceNote = draft.referenceNumber ? `Reference: ${draft.referenceNumber}` : null;
     const persistedNotes = [draft.notes?.trim() || null, referenceNote].filter((item): item is string => Boolean(item)).join('\n') || null;
     const financialEffect = draft.financialEffect ?? (draft.transactionType === 'expense' ? 'expense' : draft.transactionType === 'income' || draft.transactionType === 'refund' ? 'income' : 'internal_transfer');
+    const transactionSpaceId = draft.spaceId ?? fallbackSpaceId!;
+    const expectedCategoryType = draft.transactionType === 'income' ? 'income' : draft.transactionType === 'expense' || draft.transactionType === 'refund' ? 'expense' : null;
+    if (!expectedCategoryType && draft.categoryId) throw new Error('Transfers and card payments cannot have a category.');
+    if (draft.categoryId) {
+      const category = categories.find((item) => item.id === draft.categoryId);
+      if (!category || category.isArchived || category.spaceId !== transactionSpaceId || category.type !== expectedCategoryType) throw new Error('Choose an active category that matches this transaction type and Space.');
+    }
     if (draft.ownershipStatus === 'unknown') throw new Error('Confirm whether this is a payment or a transfer to your own account.');
     if (financialEffect === 'internal_transfer') {
       if (!draft.accountFromId || !draft.accountToId || draft.accountFromId === draft.accountToId) throw new Error('An internal transfer needs two different owned accounts.');
@@ -297,7 +304,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
       id: '', type: transactionType, financialEffect, paymentRail: draft.paymentRail ?? 'unknown', amount: draft.amount, currency: draft.currency,
       merchant: draft.merchant, counterpartyId, counterpartyName: draft.counterpartyName ?? draft.merchant,
       ownershipStatus: financialEffect === 'internal_transfer' ? 'owned' : draft.ownershipStatus ?? 'external',
-      spaceId: draft.spaceId ?? fallbackSpaceId!, categoryId: financialEffect === 'internal_transfer' ? null : draft.categoryId, tagIds: draft.tagIds,
+      spaceId: transactionSpaceId, categoryId: financialEffect === 'internal_transfer' ? null : draft.categoryId, tagIds: draft.tagIds,
       accountFromId, accountToId, paidByUserId: draft.paidByUserId,
       transactionDate: draft.transactionDate, notes: persistedNotes, originalMessage: draft.originalMessage || null,
       bankTransactionLabel: draft.bankTransactionLabel ?? null, referenceNumber: draft.referenceNumber ?? null,
@@ -328,7 +335,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
     setAccounts((items) => applyTransactionToAccountBalances(items, transaction));
     setLastAdded(transaction);
     return transaction;
-  }, [accounts, selectedSpaceId, session, spaces, workspaceId]);
+  }, [accounts, categories, selectedSpaceId, session, spaces, workspaceId]);
 
   const rememberOwnAccountMapping = useCallback(async (draft: ParsedTransactionDraft, accountId: string) => {
     if (!supabase || !workspaceId || !session?.user.id) throw new Error('MoneyYap is not connected to Supabase.');
@@ -430,9 +437,9 @@ export function FinanceProvider({ children }: PropsWithChildren) {
       const { data, error } = await supabase.from('spaces').insert({ workspace_id: workspaceId, created_by: session.user.id, name: space.name, icon: space.icon, color: space.color, sort_order: space.sortOrder, is_archived: space.isArchived }).select('id').single();
       if (error) throw error; id = String(data.id);
     }
-    setSpaces((items) => [...items, { ...space, id }]);
+    await refreshFinance();
     return id;
-  }, [session, workspaceId]);
+  }, [refreshFinance, session, workspaceId]);
 
   const updateSpace = useCallback(async (id: string, changes: Partial<Space>) => {
     if (!supabase) throw new Error('MoneyYap is not connected to Supabase.');
@@ -476,8 +483,13 @@ export function FinanceProvider({ children }: PropsWithChildren) {
   }, []);
 
   const archiveCategory = useCallback(async (id: string) => {
-    const ids = [id, ...categories.filter((item) => item.parentId === id).map((item) => item.id)];
-    await Promise.all(ids.map((categoryId) => updateCategory(categoryId, { isArchived: true })));
+    const ids = new Set([id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      categories.forEach((item) => { if (item.parentId && ids.has(item.parentId) && !ids.has(item.id)) { ids.add(item.id); changed = true; } });
+    }
+    await Promise.all([...ids].map((categoryId) => updateCategory(categoryId, { isArchived: true })));
   }, [categories, updateCategory]);
 
   const addWorkspaceMember = useCallback(async (email: string) => {

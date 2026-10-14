@@ -163,14 +163,14 @@ export default function AddScreen() {
       needsConfirmation: !inferredSpaceId || stillMissingAccount || missingCategory,
       confirmationQuestion: !inferredSpaceId ? 'Which Space is this for?' : stillMissingAccount ? 'Which account should I use?' : missingCategory ? 'What was this for?' : undefined,
       candidateAccountIds: remainingCandidates,
-      candidateCategoryIds: !stillMissingAccount && missingCategory ? categories.filter((item) => item.type === (draft.financialEffect === 'income' ? 'income' : 'expense') && (!item.spaceId || item.spaceId === inferredSpaceId) && !item.isArchived).map((item) => item.id) : undefined,
+      candidateCategoryIds: !stillMissingAccount && missingCategory ? categories.filter((item) => item.type === (draft.transactionType === 'refund' ? 'expense' : draft.financialEffect === 'income' ? 'income' : 'expense') && item.spaceId === inferredSpaceId && !item.isArchived).map((item) => item.id) : undefined,
       candidateSpaceIds: !inferredSpaceId ? spaces.filter((item) => !item.isArchived).map((item) => item.id) : undefined,
       clarification: !inferredSpaceId
         ? { type: 'space', question: 'Which Space is this for?', spaceIds: spaces.filter((item) => !item.isArchived).map((item) => item.id) }
         : stillMissingAccount
           ? { type: 'account', question: 'Which account should I use?', accountIds: remainingCandidates ?? [] }
           : missingCategory
-            ? { type: 'category', question: 'What was this for?', categoryIds: categories.filter((item) => item.type === (draft.financialEffect === 'income' ? 'income' : 'expense') && (!item.spaceId || item.spaceId === inferredSpaceId) && !item.isArchived).map((item) => item.id) }
+            ? { type: 'category', question: 'What was this for?', categoryIds: categories.filter((item) => item.type === (draft.transactionType === 'refund' ? 'expense' : draft.financialEffect === 'income' ? 'income' : 'expense') && item.spaceId === inferredSpaceId && !item.isArchived).map((item) => item.id) }
             : null,
       confidence: Math.max(draft.confidence, 0.92),
     };
@@ -202,11 +202,11 @@ export default function AddScreen() {
       confirmationQuestion: missingAccount ? 'Which account should I use?' : missingCategory ? 'What was this for?' : undefined,
       candidateSpaceIds: undefined,
       candidateAccountIds: missingAccount ? candidates.map((item) => item.id) : undefined,
-      candidateCategoryIds: !missingAccount && missingCategory ? categories.filter((item) => item.type === (draft.financialEffect === 'income' ? 'income' : 'expense') && (!item.spaceId || item.spaceId === spaceId) && !item.isArchived).map((item) => item.id) : undefined,
+      candidateCategoryIds: !missingAccount && missingCategory ? categories.filter((item) => item.type === (draft.transactionType === 'refund' ? 'expense' : draft.financialEffect === 'income' ? 'income' : 'expense') && item.spaceId === spaceId && !item.isArchived).map((item) => item.id) : undefined,
       clarification: missingAccount
         ? { type: 'account' as const, question: 'Which account should I use?', accountIds: candidates.map((item) => item.id) }
         : missingCategory
-          ? { type: 'category' as const, question: 'What was this for?', categoryIds: categories.filter((item) => item.type === (draft.financialEffect === 'income' ? 'income' : 'expense') && (!item.spaceId || item.spaceId === spaceId) && !item.isArchived).map((item) => item.id) }
+          ? { type: 'category' as const, question: 'What was this for?', categoryIds: categories.filter((item) => item.type === (draft.transactionType === 'refund' ? 'expense' : draft.financialEffect === 'income' ? 'income' : 'expense') && item.spaceId === spaceId && !item.isArchived).map((item) => item.id) }
           : null,
       confidence: Math.max(draft.confidence, 0.92),
     };
@@ -243,13 +243,13 @@ export default function AddScreen() {
         confirmationQuestion: missingSource ? 'Which account did you pay with?' : missingSpace ? 'Which Space is this for?' : missingCategory ? 'What was this for?' : undefined,
         candidateAccountIds: missingSource ? accounts.filter((item) => item.isActive).map((item) => item.id) : undefined,
         candidateSpaceIds: !missingSource && missingSpace ? spaces.filter((item) => !item.isArchived).map((item) => item.id) : undefined,
-        candidateCategoryIds: !missingSource && !missingSpace && missingCategory ? categories.filter((item) => item.type === 'expense' && (!item.spaceId || item.spaceId === draft.spaceId) && !item.isArchived).map((item) => item.id) : undefined,
+        candidateCategoryIds: !missingSource && !missingSpace && missingCategory ? categories.filter((item) => item.type === 'expense' && item.spaceId === draft.spaceId && !item.isArchived).map((item) => item.id) : undefined,
         clarification: missingSource
           ? { type: 'account', question: 'Which account did you pay with?', accountIds: accounts.filter((item) => item.isActive).map((item) => item.id) }
           : missingSpace
             ? { type: 'space', question: 'Which Space is this for?', spaceIds: spaces.filter((item) => !item.isArchived).map((item) => item.id) }
             : missingCategory
-              ? { type: 'category', question: 'What was this for?', categoryIds: categories.filter((item) => item.type === 'expense' && (!item.spaceId || item.spaceId === draft.spaceId) && !item.isArchived).map((item) => item.id) }
+              ? { type: 'category', question: 'What was this for?', categoryIds: categories.filter((item) => item.type === 'expense' && item.spaceId === draft.spaceId && !item.isArchived).map((item) => item.id) }
               : null,
       });
       await clearConversationClarification(conversationId);

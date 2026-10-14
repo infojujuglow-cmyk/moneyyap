@@ -1,7 +1,9 @@
 import type { Category, MonthlyPoint, Transaction } from '@/types/finance';
 
 export const isSpend = (transaction: Transaction) => transaction.financialEffect === 'expense';
-export const isIncome = (transaction: Transaction) => transaction.financialEffect === 'income';
+export const isRefund = (transaction: Transaction) => transaction.type === 'refund';
+export const isIncome = (transaction: Transaction) => transaction.financialEffect === 'income' && !isRefund(transaction);
+export const expenseContribution = (transaction: Transaction) => isRefund(transaction) ? -transaction.amount : isSpend(transaction) ? transaction.amount : 0;
 
 export type AnalyticsRangeKey = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_30_days' | 'last_6_months' | 'custom';
 export type AnalyticsGrouping = 'three_hour' | 'day' | 'week' | 'month';
@@ -149,7 +151,7 @@ export const transactionsInRange = (transactions: Transaction[], start: Date, en
   });
 
 export const cashFlowTotals = (transactions: Transaction[]): CashFlowTotals => {
-  const spending = transactions.filter(isSpend).reduce((sum, item) => sum + item.amount, 0);
+  const spending = transactions.reduce((sum, item) => sum + expenseContribution(item), 0);
   const income = transactions.filter(isIncome).reduce((sum, item) => sum + item.amount, 0);
   return { spending, income, netCashFlow: income - spending, transactionCount: transactions.length };
 };
@@ -201,7 +203,7 @@ export const monthlyTotals = (transactions: Transaction[], date = new Date()) =>
 };
 
 export const categoryTotalsForTransactions = (transactions: Transaction[], categories: Category[], spaceId: string | null = null) => {
-  const current = transactions.filter(isSpend);
+  const current = transactions.filter((item) => isSpend(item) || isRefund(item));
   const categoryMap = new Map(categories.map((item) => [item.id, item]));
   const rootId = (categoryId: string | null) => {
     let category = categoryId ? categoryMap.get(categoryId) : undefined;
@@ -209,7 +211,22 @@ export const categoryTotalsForTransactions = (transactions: Transaction[], categ
     return category?.id ?? categoryId;
   };
   return categories
-    .filter((category) => category.type === 'expense' && !category.parentId && !category.isArchived && (spaceId === null || !category.spaceId || category.spaceId === spaceId))
+    .filter((category) => category.type === 'expense' && !category.parentId && !category.isArchived && (spaceId === null || category.spaceId === spaceId))
+    .map((category) => ({ ...category, amount: current.filter((item) => rootId(item.categoryId) === category.id).reduce((sum, item) => sum + expenseContribution(item), 0) }))
+    .filter((item) => item.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+};
+
+export const incomeCategoryTotalsForTransactions = (transactions: Transaction[], categories: Category[], spaceId: string | null = null) => {
+  const current = transactions.filter(isIncome);
+  const categoryMap = new Map(categories.map((item) => [item.id, item]));
+  const rootId = (categoryId: string | null) => {
+    let category = categoryId ? categoryMap.get(categoryId) : undefined;
+    while (category?.parentId) category = categoryMap.get(category.parentId);
+    return category?.id ?? categoryId;
+  };
+  return categories
+    .filter((category) => category.type === 'income' && !category.parentId && !category.isArchived && (spaceId === null || category.spaceId === spaceId))
     .map((category) => ({ ...category, amount: current.filter((item) => rootId(item.categoryId) === category.id).reduce((sum, item) => sum + item.amount, 0) }))
     .filter((item) => item.amount > 0)
     .sort((a, b) => b.amount - a.amount);
@@ -228,9 +245,9 @@ export const spendingTrendSeries = (transactions: Transaction[], range: Analytic
   const expenseTotal = (start: Date, end: Date) => periodTransactions
     .filter((item) => {
       const itemDate = new Date(item.transactionDate);
-      return isSpend(item) && itemDate >= start && itemDate < end;
+      return (isSpend(item) || isRefund(item)) && itemDate >= start && itemDate < end;
     })
-    .reduce((sum, item) => sum + item.amount, 0);
+    .reduce((sum, item) => sum + expenseContribution(item), 0);
 
   if (range.grouping === 'three_hour') {
     const firstBucket = startOfLocalDay(range.start);
@@ -282,7 +299,7 @@ export const monthlySeries = (transactions: Transaction[], count = 6): MonthlyPo
     return {
       label: date.toLocaleDateString('en-PH', { month: 'short' }),
       income: items.filter(isIncome).reduce((sum, item) => sum + item.amount, 0),
-      expense: items.filter(isSpend).reduce((sum, item) => sum + item.amount, 0),
+      expense: items.reduce((sum, item) => sum + expenseContribution(item), 0),
     };
   });
 };

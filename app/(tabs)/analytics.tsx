@@ -7,7 +7,7 @@ import { Screen } from '@/components/Screen';
 import { SpaceSelector } from '@/components/SpaceSelector';
 import { AppText, Chip, SectionHeader, Surface } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
-import { analyticsTotals, categoryTotalsForTransactions, isSpend, resolveAnalyticsDateRange, spendingTrendSeries, transactionsInRange, transactionsInSpace, type AnalyticsCustomRange, type AnalyticsRangeKey } from '@/services/analytics';
+import { analyticsTotals, categoryTotalsForTransactions, expenseContribution, incomeCategoryTotalsForTransactions, isRefund, isSpend, resolveAnalyticsDateRange, spendingTrendSeries, transactionsInRange, transactionsInSpace, type AnalyticsCustomRange, type AnalyticsRangeKey } from '@/services/analytics';
 import { colors, formatCompactPeso, formatPeso, spacing } from '@/theme';
 
 export default function AnalyticsScreen() {
@@ -23,10 +23,12 @@ export default function AnalyticsScreen() {
   const periodTransactions = useMemo(() => transactionsInRange(visibleTransactions, range.start, range.end), [visibleTransactions, range]);
   const totals = useMemo(() => analyticsTotals(visibleTransactions, range), [visibleTransactions, range]);
   const categoryData = useMemo(() => categoryTotalsForTransactions(periodTransactions, categories, selectedSpaceId), [periodTransactions, categories, selectedSpaceId]);
+  const incomeCategoryData = useMemo(() => incomeCategoryTotalsForTransactions(periodTransactions, categories, selectedSpaceId), [periodTransactions, categories, selectedSpaceId]);
   const series = useMemo(() => spendingTrendSeries(visibleTransactions, range), [visibleTransactions, range]);
   const spending = periodTransactions.filter(isSpend);
-  const accountData = accounts.map((account) => ({ id: account.id, name: account.name, color: account.accent, amount: spending.filter((item) => item.accountFromId === account.id).reduce((sum, item) => sum + item.amount, 0) })).filter((item) => item.amount > 0).sort((a, b) => b.amount - a.amount);
-  const merchants = Object.entries(spending.reduce<Record<string, number>>((acc, item) => { const name = item.merchant ?? item.counterpartyName ?? 'Other'; acc[name] = (acc[name] ?? 0) + item.amount; return acc; }, {})).map(([name, amount]) => ({ name, amount })).sort((a, b) => b.amount - a.amount).slice(0, 5);
+  const expenseActivity = periodTransactions.filter((item) => isSpend(item) || isRefund(item));
+  const accountData = accounts.map((account) => ({ id: account.id, name: account.name, color: account.accent, amount: expenseActivity.filter((item) => isRefund(item) ? item.accountToId === account.id : item.accountFromId === account.id).reduce((sum, item) => sum + expenseContribution(item), 0) })).filter((item) => item.amount > 0).sort((a, b) => b.amount - a.amount);
+  const merchants = Object.entries(expenseActivity.reduce<Record<string, number>>((acc, item) => { const name = item.merchant ?? item.counterpartyName ?? 'Other'; acc[name] = (acc[name] ?? 0) + expenseContribution(item); return acc; }, {})).map(([name, amount]) => ({ name, amount })).filter((item) => item.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 5);
   const memberData = members.map((member, index) => ({ id: member.id, name: member.fullName, color: index % 2 === 0 ? colors.mintDark : colors.blue, amount: spending.filter((item) => item.paidByUserId === member.id).reduce((sum, item) => sum + item.amount, 0) })).filter((item) => item.amount > 0).sort((a, b) => b.amount - a.amount);
   const comparisonIsLower = (totals.spendingChange ?? 0) <= 0;
   const handleRangeSelect = (key: AnalyticsRangeKey, nextCustomRange?: AnalyticsCustomRange) => {
@@ -54,6 +56,7 @@ export default function AnalyticsScreen() {
           <View style={styles.section}><SectionHeader title="By account" /><Surface style={styles.padded}>{accountData.length ? <BarList items={accountData} total={totals.spending} /> : <AppText style={styles.emptyText}>No account spending for this period.</AppText>}</Surface></View>
         </View>
         <View style={styles.gridColumn}>
+          <View style={styles.section}><SectionHeader title="Income sources" /><Surface style={styles.padded}>{incomeCategoryData.length ? <BarList items={incomeCategoryData} total={totals.income} /> : <AppText style={styles.emptyText}>No income categories for this period.</AppText>}</Surface></View>
           <View style={styles.section}><SectionHeader title="Top merchants" /><Surface style={styles.merchantCard}>{merchants.length ? merchants.map((item, index) => <View key={item.name} style={[styles.merchantRow, index > 0 && styles.borderTop]}><View style={styles.rank}><AppText variant="caption" style={styles.rankText}>{index + 1}</AppText></View><AppText variant="bodyMedium" style={styles.merchantName}>{item.name}</AppText><AppText variant="bodyMedium">{formatPeso(item.amount)}</AppText></View>) : <AppText style={styles.emptyText}>No merchants for this period.</AppText>}</Surface></View>
           <View style={styles.section}><SectionHeader title="By member" /><Surface style={styles.padded}>{memberData.length ? <BarList items={memberData} total={totals.spending} /> : <AppText style={styles.emptyText}>No member spending for this period.</AppText>}</Surface></View>
         </View>

@@ -198,6 +198,7 @@ export const mergeFinanceQueryContext = (
 
 export type FinanceTransactionRow = {
   id: string;
+  type?: 'expense' | 'income' | 'transfer' | 'credit_card_payment' | 'refund';
   financial_effect: 'expense' | 'income' | 'internal_transfer' | 'adjustment';
   amount: number | string;
   transaction_date: string;
@@ -217,7 +218,9 @@ export const filterFinanceRows = (rows: FinanceTransactionRow[], context: Financ
     if (context.dateRange && (row.transaction_date < context.dateRange.start || row.transaction_date >= context.dateRange.end)) return false;
     if (context.categoryId && row.category_id !== context.categoryId) return false;
     if (row.category_id && excluded.has(row.category_id)) return false;
-    if (context.transactionType && context.transactionType !== 'all' && row.financial_effect !== context.transactionType) return false;
+    if (context.transactionType === 'income' && (row.financial_effect !== 'income' || row.type === 'refund')) return false;
+    if (context.transactionType === 'expense' && row.financial_effect !== 'expense' && row.type !== 'refund') return false;
+    if (context.transactionType === 'internal_transfer' && row.financial_effect !== 'internal_transfer') return false;
     if (requestedAccounts) {
       const accountId = row.financial_effect === 'income' ? row.account_to_id : row.account_from_id;
       if (!accountId || !requestedAccounts.has(accountId)) return false;
@@ -227,6 +230,8 @@ export const filterFinanceRows = (rows: FinanceTransactionRow[], context: Financ
   });
 };
 
-export const sumFinanceRows = (rows: FinanceTransactionRow[], effect: 'expense' | 'income') => rows
-  .filter((row) => row.financial_effect === effect)
-  .reduce((total, row) => total + Number(row.amount), 0);
+export const sumFinanceRows = (rows: FinanceTransactionRow[], effect: 'expense' | 'income') => rows.reduce((total, row) => {
+  if (effect === 'income') return row.financial_effect === 'income' && row.type !== 'refund' ? total + Number(row.amount) : total;
+  if (row.type === 'refund') return total - Number(row.amount);
+  return row.financial_effect === 'expense' ? total + Number(row.amount) : total;
+}, 0);
