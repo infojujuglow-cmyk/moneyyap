@@ -1,0 +1,7 @@
+project_id = "qqpwdzaaheeczjobffnr"
+
+[functions.parse-transaction]
+verify_jwt = true
+
+[functions.parse-transaction-image]
+verify_jwt = true
