@@ -45,7 +45,7 @@ function rankByHistory<T>(items: T[], transactions: Transaction[], selectedSpace
 
 export default function ManualTransactionScreen() {
   const params = useLocalSearchParams<{ draft?: string }>();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 700;
   const { accounts, categories, members, spaces, tags, transactions, selectedSpaceId, setSelectedSpaceId, saveDraft } = useFinance();
   const activeAccounts = useMemo(() => accounts.filter((item) => item.isActive), [accounts]);
@@ -165,7 +165,7 @@ export default function ManualTransactionScreen() {
 
   return (
     <View style={[styles.backdrop, desktop && styles.backdropDesktop]}>
-      <KeyboardAvoidingView style={[styles.keyboard, desktop && styles.keyboardDesktop]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={[styles.keyboard, desktop && styles.keyboardDesktop, desktop && { height: Math.min(820, height - spacing.huge) }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <SafeAreaView edges={desktop ? [] : ['top', 'bottom']} style={[styles.card, desktop && styles.cardDesktop]}>
           <View style={styles.header}><View><AppText variant="h3">Add manually</AppText><AppText variant="caption" style={styles.muted}>Record a transaction</AppText></View><Pressable accessibilityLabel="Close" onPress={() => router.back()} style={styles.close}><Ionicons name="close" size={22} color={colors.ink} /></Pressable></View>
           <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: colors.softWhite },
   backdropDesktop: { justifyContent: 'center', alignItems: 'center', padding: spacing.xl, backgroundColor: 'rgba(18, 25, 35, 0.16)' },
   keyboard: { flex: 1, width: '100%' },
-  keyboardDesktop: { flex: 0, width: 580, height: '92%', maxHeight: 820 },
+  keyboardDesktop: { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', width: 580 },
   card: { flex: 1, backgroundColor: colors.softWhite },
   cardDesktop: { borderRadius: radii.xl, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
   header: { minHeight: 68, paddingHorizontal: spacing.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.white },
