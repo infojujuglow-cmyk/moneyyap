@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { TransactionDateTimeField } from '@/components/TransactionDateTimeField';
 import { AppText, Button, Chip, EmptyState } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
 import { colors, formatPeso, radii, spacing, typography } from '@/theme';
@@ -20,6 +21,10 @@ export default function TransactionDetailScreen() {
   const [categoryId, setCategoryId] = useState(transaction?.categoryId ?? null);
   const [spaceId, setSpaceId] = useState(transaction?.spaceId ?? null);
   const [tagIds, setTagIds] = useState(transaction?.tagIds ?? []);
+  const [transactionDate, setTransactionDate] = useState(() => {
+    const parsed = transaction?.transactionDate ? new Date(transaction.transactionDate) : new Date();
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  });
   const [saving, setSaving] = useState(false);
   if (!transaction) return <View style={styles.missing}><EmptyState icon="search-outline" title="Transaction not found" body="It may have already been deleted." action={<Button label="Go back" onPress={() => router.back()} />} /></View>;
   const save = async () => {
@@ -32,6 +37,7 @@ export default function TransactionDetailScreen() {
       type: nextType, financialEffect, paymentRail, ownershipStatus: isInternal ? 'owned' : 'external', classificationReviewRequired: false,
       categoryId: isInternal ? null : categoryId, tagIds,
       accountFromId: isIncoming ? null : accountId, accountToId: isIncoming ? accountId : isInternal ? destinationId : null,
+      transactionDate: transactionDate.toISOString(),
     });
     setSaving(false);
     router.back();
@@ -44,11 +50,11 @@ export default function TransactionDetailScreen() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.typeBadge}><Ionicons name="sparkles-outline" size={14} color={colors.mintDeep} /><AppText variant="caption" style={styles.typeText}>{transaction.aiParsed ? 'Added by MoneyYap' : 'Manual entry'} · editable classification</AppText></View>
         {transaction.classificationReviewRequired && <View style={styles.reviewWarning}><Ionicons name="alert-circle-outline" size={20} color={colors.warning} /><AppText style={styles.reviewWarningText}>This older AI-created transfer predates ownership matching. Confirm whether it was an expense or an internal transfer, then save.</AppText></View>}
-        <AppText variant="caption" style={styles.date}>{new Date(transaction.transactionDate).toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</AppText>
         <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>FINANCIAL EFFECT</AppText><View style={styles.wrap}><Chip label="Expense" selected={financialEffect === 'expense'} onPress={() => { setFinancialEffect('expense'); setCategoryId(null); }} /><Chip label="Income" selected={financialEffect === 'income'} onPress={() => { setFinancialEffect('income'); setCategoryId(null); }} /><Chip label="Internal transfer" selected={financialEffect === 'internal_transfer'} onPress={() => { setFinancialEffect('internal_transfer'); setCategoryId(null); }} /></View></View>
         <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>PAYMENT METHOD / RAIL</AppText><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.wrap}>{(['unknown', 'cash', 'bank_transfer', 'instapay', 'pesonet', 'gcash', 'maya', 'debit_card', 'credit_card'] as PaymentRail[]).map((item) => <Chip key={item} label={item === 'unknown' ? 'Not specified' : item.replaceAll('_', ' ')} selected={paymentRail === item} onPress={() => setPaymentRail(item)} />)}</ScrollView></View>
         <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>AMOUNT</AppText><View style={styles.amount}><AppText variant="h2" style={financialEffect === 'expense' ? styles.expenseAmount : financialEffect === 'income' ? styles.incomeAmount : undefined}>₱</AppText><TextInput value={amount} onChangeText={setAmount} keyboardType="decimal-pad" style={[styles.amountInput, financialEffect === 'expense' ? styles.expenseAmount : financialEffect === 'income' ? styles.incomeAmount : undefined]} /></View></View>
         <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>MERCHANT OR DESCRIPTION</AppText><TextInput value={merchant} onChangeText={setMerchant} style={styles.input} /></View>
+        <TransactionDateTimeField value={transactionDate} onChange={setTransactionDate} />
         <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>SPACE</AppText><View style={styles.wrap}>{spaces.filter((item) => !item.isArchived || item.id === transaction.spaceId).map((item) => <Chip key={item.id} label={item.name} selected={spaceId === item.id} onPress={() => { setSpaceId(item.id); const current = categories.find((category) => category.id === categoryId); if (current?.spaceId && current.spaceId !== item.id) setCategoryId(null); }} />)}</View></View>
         <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>{financialEffect === 'income' ? 'DEPOSIT TO' : financialEffect === 'internal_transfer' ? 'FROM ACCOUNT' : 'PAID WITH'}</AppText><View style={styles.wrap}>{accounts.filter((item) => item.isActive || item.id === accountId).map((item) => <Chip key={item.id} label={item.isActive ? item.name : `${item.name} · removed`} selected={accountId === item.id} onPress={() => setAccountId(item.id)} />)}</View></View>
         {financialEffect === 'internal_transfer' && <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>TO OWN ACCOUNT</AppText><View style={styles.wrap}>{accounts.filter((item) => (item.isActive || item.id === destinationId) && item.id !== accountId).map((item) => <Chip key={item.id} label={item.isActive ? item.name : `${item.name} · removed`} selected={destinationId === item.id} onPress={() => setDestinationId(item.id)} />)}</View></View>}
@@ -70,7 +76,6 @@ const styles = StyleSheet.create({
   content: { padding: spacing.xl, gap: spacing.xxl, paddingBottom: 60 },
   typeBadge: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.mintWash, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   typeText: { color: colors.mintDeep, textTransform: 'capitalize' },
-  date: { color: colors.slate, textAlign: 'center', marginTop: -spacing.md },
   field: { gap: spacing.md },
   label: { color: colors.slate },
   amount: { flexDirection: 'row', alignItems: 'center', minHeight: 62, borderBottomWidth: 1, borderBottomColor: colors.borderStrong },

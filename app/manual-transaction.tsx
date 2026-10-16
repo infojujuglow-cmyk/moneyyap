@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SmartSelectField, SmartSelectSheet, type SmartSelectOption } from '@/components/SmartSelectSheet';
+import { TransactionDateTimeField } from '@/components/TransactionDateTimeField';
 import { AppText, Button } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
 import { colors, radii, spacing, typography } from '@/theme';
@@ -65,7 +66,10 @@ export default function ManualTransactionScreen() {
   const [categoryId, setCategoryId] = useState(initialDraft?.categoryId ?? null);
   const [paymentRail, setPaymentRail] = useState<PaymentRail>(initialDraft?.paymentRail ?? 'unknown');
   const [notes, setNotes] = useState(initialDraft?.notes ?? '');
-  const [transactionDate] = useState(() => initialDraft?.transactionDate ?? new Date().toISOString());
+  const [transactionDate, setTransactionDate] = useState(() => {
+    const parsed = initialDraft?.transactionDate ? new Date(initialDraft.transactionDate) : new Date();
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  });
   const [picker, setPicker] = useState<Picker>(null);
   const [moreOpen, setMoreOpen] = useState(Boolean(initialDraft?.notes || initialDraft?.paymentRail && initialDraft.paymentRail !== 'unknown' || initialDraft?.tagIds?.length));
   const [saving, setSaving] = useState(false);
@@ -122,7 +126,7 @@ export default function ManualTransactionScreen() {
         spaceId, categoryId: needsCategory ? effectiveCategoryId : null, tagIds,
         accountFromId: type === 'income' || type === 'refund' ? null : effectiveAccountId,
         accountToId: type === 'income' || type === 'refund' ? effectiveAccountId : movesMoney ? effectiveDestinationId : null,
-        paidByUserId: members[0]?.id ?? null, transactionDate, notes: notes.trim() || null,
+        paidByUserId: members[0]?.id ?? null, transactionDate: transactionDate.toISOString(), notes: notes.trim() || null,
         originalMessage: initialDraft?.originalMessage ?? '', confidence: initialDraft?.confidence ?? 1, needsConfirmation: false,
         sourceKind: initialDraft?.sourceKind, referenceNumber: initialDraft?.referenceNumber,
         bankTransactionLabel: initialDraft?.bankTransactionLabel, rawExtraction: initialDraft?.rawExtraction,
@@ -178,12 +182,12 @@ export default function ManualTransactionScreen() {
             <SmartSelectField label={labels.account} value={selectedAccount?.name} placeholder="Choose an account" onPress={() => setPicker('account')} hint={!accountId && selectedAccount?.id === suggestedAccountId ? 'Suggested from recent activity' : null} />
             {movesMoney && <SmartSelectField label={labels.destination} value={selectedDestination?.name} placeholder="Choose an account" onPress={() => setPicker('destination')} hint={!destinationId && selectedDestination?.id === suggestedDestinationId ? 'Suggested from recent activity' : null} />}
             {needsCategory && <SmartSelectField label={type === 'refund' ? 'Original category' : 'Category'} value={categoryLabel(selectedCategory)} placeholder="Choose a category" onPress={() => setPicker('category')} hint={originalMatch?.categoryId === effectiveCategoryId ? 'Matched from the original transaction' : !categoryId && selectedCategory?.id === suggestedCategoryId ? 'Suggested from similar transactions' : null} />}
+            <TransactionDateTimeField value={transactionDate} onChange={setTransactionDate} />
             <Pressable onPress={() => setMoreOpen((current) => !current)} style={({ pressed }) => [styles.moreToggle, pressed && styles.pressed]}><View style={styles.moreTitle}><Ionicons name="options-outline" size={19} color={colors.slateDark} /><AppText variant="bodyMedium">More details</AppText></View><Ionicons name={moreOpen ? 'chevron-up' : 'chevron-down'} size={19} color={colors.slate} /></Pressable>
             {moreOpen && <View style={styles.moreDetails}>
               <SmartSelectField label="Payment method / rail" value={railLabels[paymentRail]} placeholder="Not specified" onPress={() => setPicker('rail')} hint="Separate from the financial account above" />
               {tags.length > 0 && <SmartSelectField label="Tags · optional" value={tagIds.length ? `${tagIds.length} selected` : null} placeholder="Choose tags" onPress={() => setPicker('tags')} />}
               <LabeledInput label="Notes · optional" value={notes} onChangeText={setNotes} placeholder="Add a note" multiline />
-              <View style={styles.dateRow}><View><AppText variant="eyebrow" style={styles.muted}>Date</AppText><AppText variant="bodyMedium">{new Date(transactionDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}</AppText></View><Ionicons name="calendar-outline" size={20} color={colors.slate} /></View>
             </View>}
           </ScrollView>
           <View style={styles.footer}>{error ? <AppText variant="caption" style={styles.error}>{error}</AppText> : null}<Button label="Save transaction" icon="checkmark" loading={saving} disabled={!valid} onPress={submit} /></View>
@@ -226,7 +230,6 @@ const styles = StyleSheet.create({
   moreToggle: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border },
   moreTitle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   moreDetails: { gap: spacing.xl },
-  dateRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xs },
   footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: spacing.lg, gap: spacing.sm, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border },
   muted: { color: colors.slate }, error: { color: colors.danger, textAlign: 'center' }, pressed: { opacity: 0.72 },
 });
