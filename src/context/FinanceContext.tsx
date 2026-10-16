@@ -375,6 +375,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
 
   const updateTransaction = useCallback(async (id: string, changes: Partial<Transaction>) => {
     if (!supabase) throw new Error('MoneyYap is not connected to Supabase.');
+    const previousTransaction = transactions.find((item) => item.id === id);
     {
       const payload: Record<string, unknown> = {};
       const fields: [keyof Transaction, string][] = [
@@ -397,8 +398,13 @@ export function FinanceProvider({ children }: PropsWithChildren) {
         }
       }
     }
-    setTransactions((items) => items.map((item) => item.id === id ? { ...item, ...changes, updatedAt: new Date().toISOString() } : item));
-  }, []);
+    const updatedAt = new Date().toISOString();
+    setTransactions((items) => items.map((item) => item.id === id ? { ...item, ...changes, updatedAt } : item));
+    if (previousTransaction) {
+      const nextTransaction = { ...previousTransaction, ...changes, updatedAt };
+      setAccounts((items) => applyTransactionToAccountBalances(applyTransactionToAccountBalances(items, previousTransaction, -1), nextTransaction));
+    }
+  }, [transactions]);
 
   const deleteTransaction = useCallback(async (id: string) => {
     if (!supabase) throw new Error('MoneyYap is not connected to Supabase.');

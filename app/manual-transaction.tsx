@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SmartSelectField, SmartSelectSheet, type SmartSelectOption } from '@/components/SmartSelectSheet';
 import { TransactionDateTimeField } from '@/components/TransactionDateTimeField';
@@ -46,17 +46,44 @@ function rankByHistory<T>(items: T[], transactions: Transaction[], selectedSpace
   return [...items].sort((left, right) => (scores.get(idForItem(right)) ?? 0) - (scores.get(idForItem(left)) ?? 0));
 }
 
-export default function ManualTransactionScreen() {
+export default function ManualTransactionScreen({ editTransactionId }: { editTransactionId?: string } = {}) {
   const params = useLocalSearchParams<{ draft?: string; accountId?: string; spaceId?: string }>();
   const { width, height } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 700;
-  const { accounts, categories, counterparties, members, spaces, tags, transactions, selectedSpaceId, setSelectedSpaceId, saveDraft } = useFinance();
-  const activeAccounts = useMemo(() => accounts.filter((item) => item.isActive), [accounts]);
-  const activeSpaces = useMemo(() => spaces.filter((item) => !item.isArchived), [spaces]);
+  const { accounts, categories, counterparties, members, spaces, tags, transactions, selectedSpaceId, setSelectedSpaceId, saveDraft, updateTransaction, deleteTransaction } = useFinance();
+  const editingTransaction = transactions.find((transaction) => transaction.id === editTransactionId);
+  const activeAccounts = useMemo(() => accounts.filter((item) => item.isActive || item.id === editingTransaction?.accountFromId || item.id === editingTransaction?.accountToId), [accounts, editingTransaction]);
+  const activeSpaces = useMemo(() => spaces.filter((item) => !item.isArchived || item.id === editingTransaction?.spaceId), [editingTransaction, spaces]);
   const initialDraft = useMemo(() => {
+    if (editingTransaction) return {
+      transactionType: editingTransaction.type,
+      financialEffect: editingTransaction.financialEffect,
+      paymentRail: editingTransaction.paymentRail,
+      amount: editingTransaction.amount,
+      currency: editingTransaction.currency,
+      merchant: editingTransaction.merchant,
+      counterpartyId: editingTransaction.counterpartyId,
+      counterpartyName: editingTransaction.counterpartyName,
+      counterpartyType: editingTransaction.ownershipStatus === 'owned' ? 'own_account' as const : 'unknown' as const,
+      ownershipStatus: editingTransaction.ownershipStatus,
+      spaceId: editingTransaction.spaceId,
+      categoryId: editingTransaction.categoryId,
+      tagIds: editingTransaction.tagIds,
+      accountFromId: editingTransaction.accountFromId,
+      accountToId: editingTransaction.accountToId,
+      paidByUserId: editingTransaction.paidByUserId,
+      transactionDate: editingTransaction.transactionDate,
+      notes: editingTransaction.notes,
+      originalMessage: editingTransaction.originalMessage ?? '',
+      confidence: editingTransaction.aiConfidence ?? 1,
+      needsConfirmation: false,
+      referenceNumber: editingTransaction.referenceNumber,
+      bankTransactionLabel: editingTransaction.bankTransactionLabel,
+      rawExtraction: editingTransaction.rawExtraction,
+    } satisfies ParsedTransactionDraft;
     if (!params.draft) return null;
     try { return JSON.parse(params.draft) as ParsedTransactionDraft; } catch { return null; }
-  }, [params.draft]);
+  }, [editingTransaction, params.draft]);
   const initialIncoming = initialDraft?.transactionType === 'income' || initialDraft?.transactionType === 'refund';
   const [type, setType] = useState<TransactionType>(initialDraft?.transactionType ?? 'expense');
   const [amount, setAmount] = useState(initialDraft?.amount ? String(initialDraft.amount) : '');
@@ -86,7 +113,7 @@ export default function ManualTransactionScreen() {
   const effectiveAccountId = accountId && sourceAccounts.some((account) => account.id === accountId) ? accountId : rankedAccounts[0]?.id ?? null;
   const destinationAccounts = useMemo(() => spaceAccounts.filter((account) => account.id !== effectiveAccountId && (type !== 'credit_card_payment' || account.type === 'credit_card')), [effectiveAccountId, spaceAccounts, type]);
   const categoryType = type === 'income' ? 'income' : 'expense';
-  const availableCategories = useMemo(() => categories.filter((category) => !category.isArchived && category.type === categoryType && category.spaceId === spaceId), [categories, categoryType, spaceId]);
+  const availableCategories = useMemo(() => categories.filter((category) => (!category.isArchived || category.id === editingTransaction?.categoryId) && category.type === categoryType && category.spaceId === spaceId), [categories, categoryType, editingTransaction, spaceId]);
   const rankedDestinations = useMemo(() => rankByHistory(destinationAccounts, transactions, spaceId, merchant, (transaction) => transaction.accountToId, (account) => account.id), [destinationAccounts, merchant, spaceId, transactions]);
   const rankedCategories = useMemo(() => rankByHistory(availableCategories, transactions, spaceId, merchant, (transaction) => transaction.categoryId, (category) => category.id), [availableCategories, merchant, spaceId, transactions]);
   const effectiveDestinationId = destinationId && destinationAccounts.some((account) => account.id === destinationId) ? destinationId : rankedDestinations[0]?.id ?? null;
@@ -157,25 +184,53 @@ export default function ManualTransactionScreen() {
     if (!valid || saving) return;
     setSaving(true); setError(null);
     try {
-      await saveDraft({
+      const draft: ParsedTransactionDraft = {
         transactionType: type,
         financialEffect: type === 'expense' ? 'expense' : type === 'income' || type === 'refund' ? 'income' : 'internal_transfer',
-        paymentRail, amount: parsedAmount, currency: 'PHP', merchant: type === 'income' ? null : merchant.trim() || null,
+        paymentRail, amount: parsedAmount, currency: editingTransaction?.currency ?? 'PHP', merchant: type === 'income' ? null : merchant.trim() || null,
         counterpartyId, counterpartyName: merchant.trim() || initialDraft?.counterpartyName || null,
         counterpartyType: initialDraft?.counterpartyType ?? (movesMoney ? 'own_account' : type === 'expense' || type === 'refund' ? 'merchant' : 'unknown'),
         counterpartyIdentifiers: initialDraft?.counterpartyIdentifiers ?? {}, ownershipStatus: movesMoney ? 'owned' : 'external',
         spaceId, categoryId: needsCategory ? effectiveCategoryId : null, tagIds,
         accountFromId: type === 'income' || type === 'refund' ? null : effectiveAccountId,
         accountToId: type === 'income' || type === 'refund' ? effectiveAccountId : movesMoney ? effectiveDestinationId : null,
-        paidByUserId: members[0]?.id ?? null, transactionDate: transactionDate.toISOString(), notes: notes.trim() || null,
+        paidByUserId: editingTransaction?.paidByUserId ?? members[0]?.id ?? null, transactionDate: transactionDate.toISOString(), notes: notes.trim() || null,
         originalMessage: initialDraft?.originalMessage ?? '', confidence: initialDraft?.confidence ?? 1, needsConfirmation: false,
         sourceKind: initialDraft?.sourceKind, referenceNumber: initialDraft?.referenceNumber,
         bankTransactionLabel: initialDraft?.bankTransactionLabel, rawExtraction: initialDraft?.rawExtraction,
-      });
+      };
+      if (editingTransaction) {
+        await updateTransaction(editingTransaction.id, {
+          type: draft.transactionType,
+          financialEffect: draft.financialEffect,
+          paymentRail: draft.paymentRail,
+          amount: draft.amount,
+          merchant: type === 'income' ? null : draft.merchant,
+          counterpartyId: draft.counterpartyId ?? null,
+          counterpartyName: draft.counterpartyName ?? null,
+          ownershipStatus: draft.ownershipStatus ?? (movesMoney ? 'owned' : 'external'),
+          spaceId: draft.spaceId!,
+          categoryId: draft.categoryId,
+          tagIds: draft.tagIds,
+          accountFromId: draft.accountFromId,
+          accountToId: draft.accountToId,
+          paidByUserId: draft.paidByUserId,
+          transactionDate: draft.transactionDate,
+          notes: draft.notes,
+          classificationReviewRequired: false,
+        });
+      } else await saveDraft(draft);
       router.back();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to save this transaction.');
     } finally { setSaving(false); }
+  };
+  const remove = () => {
+    if (!editingTransaction) return;
+    Alert.alert('Delete this transaction?', 'It will be removed from your workspace history and analytics.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => { await deleteTransaction(editingTransaction.id); router.back(); } },
+    ]);
   };
 
   const labels = {
@@ -212,11 +267,12 @@ export default function ManualTransactionScreen() {
     <View style={[styles.backdrop, desktop && styles.backdropDesktop]}>
       <KeyboardAvoidingView style={[styles.keyboard, desktop && styles.keyboardDesktop, desktop && { height: Math.min(820, height - spacing.huge) }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <SafeAreaView edges={desktop ? [] : ['top', 'bottom']} style={[styles.card, desktop && styles.cardDesktop]}>
-          <View style={styles.header}><View><AppText variant="h3">Add manually</AppText><AppText variant="caption" style={styles.muted}>Record a transaction</AppText></View><Pressable accessibilityLabel="Close" onPress={() => router.back()} style={styles.close}><Ionicons name="close" size={22} color={colors.ink} /></Pressable></View>
+          <View style={styles.header}><View><AppText variant="h3">{editingTransaction ? 'Edit transaction' : 'Add manually'}</AppText><AppText variant="caption" style={styles.muted}>{editingTransaction ? 'Update transaction details' : 'Record a transaction'}</AppText></View><View style={styles.headerActions}>{editingTransaction && <Pressable accessibilityLabel="Delete transaction" onPress={remove} style={[styles.close, styles.delete]}><Ionicons name="trash-outline" size={20} color={colors.danger} /></Pressable>}<Pressable accessibilityLabel="Close" onPress={() => router.back()} style={styles.close}><Ionicons name="close" size={22} color={colors.ink} /></Pressable></View></View>
           <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeRow}>
               {transactionTypes.map((item) => { const selected = type === item.id; return <Pressable key={item.id} onPress={() => selectType(item.id)} style={({ pressed }) => [styles.typeOption, selected && styles.typeSelected, pressed && styles.pressed]}><Ionicons name={item.icon} size={17} color={selected ? colors.mintDeep : colors.slate} /><AppText variant="caption" style={selected ? styles.typeTextSelected : styles.muted}>{item.label}</AppText></Pressable>; })}
             </ScrollView>
+            {editingTransaction?.classificationReviewRequired && <View style={styles.reviewWarning}><Ionicons name="alert-circle-outline" size={19} color={colors.warning} /><AppText variant="caption" style={styles.reviewWarningText}>Confirm the transaction type and accounts before saving this older AI-classified transaction.</AppText></View>}
             <Pressable onPress={() => setPicker('space')} style={({ pressed }) => [styles.spacePill, pressed && styles.pressed]}><View style={[styles.spaceDot, { backgroundColor: selectedSpace?.color ?? colors.mint }]} /><AppText variant="caption" style={styles.spaceName}>{selectedSpace?.name ?? 'Choose space'}</AppText><Ionicons name="chevron-down" size={14} color={colors.slate} /></Pressable>
             <View style={styles.amountBlock}><AppText variant="eyebrow" style={styles.muted}>Amount</AppText><View style={styles.amountField}><AppText style={styles.currency}>₱</AppText><TextInput value={amount} onChangeText={setAmount} placeholder="0" placeholderTextColor={colors.borderStrong} keyboardType="decimal-pad" autoFocus style={styles.amountInput} /></View></View>
             <CounterpartyInput label={labels.description} value={merchant} onChangeText={(value) => { setMerchant(value); if (normalize(value) !== normalize(matchedCounterpartyName)) { setCounterpartyId(null); setMatchedCounterpartyName(null); } }} placeholder={labels.descriptionPlaceholder} suggestions={counterpartySuggestions} onSelect={(suggestion) => { setMerchant(suggestion.name); setCounterpartyId(suggestion.id); setMatchedCounterpartyName(suggestion.name); }} />
@@ -229,9 +285,10 @@ export default function ManualTransactionScreen() {
               <SmartSelectField label="Payment method / rail" value={railLabels[paymentRail]} placeholder="Not specified" onPress={() => setPicker('rail')} hint="Separate from the financial account above" />
               {tags.length > 0 && <SmartSelectField label="Tags · optional" value={tagIds.length ? `${tagIds.length} selected` : null} placeholder="Choose tags" onPress={() => setPicker('tags')} />}
               <LabeledInput label="Notes · optional" value={notes} onChangeText={setNotes} placeholder="Add a note" multiline />
+              {editingTransaction?.originalMessage && <View style={styles.original}><AppText variant="eyebrow" style={styles.muted}>Original message</AppText><AppText>“{editingTransaction.originalMessage}”</AppText></View>}
             </View>}
           </ScrollView>
-          <View style={styles.footer}>{error ? <AppText variant="caption" style={styles.error}>{error}</AppText> : null}<Button label="Save transaction" icon="checkmark" loading={saving} disabled={!valid} onPress={submit} /></View>
+          <View style={styles.footer}>{error ? <AppText variant="caption" style={styles.error}>{error}</AppText> : null}<Button label={editingTransaction ? 'Save changes' : 'Save transaction'} icon="checkmark" loading={saving} disabled={!valid} onPress={submit} /></View>
         </SafeAreaView>
       </KeyboardAvoidingView>
       <SmartSelectSheet visible={picker !== null} title={sheetConfig.title} options={sheetConfig.options} selectedIds={sheetConfig.ids} searchPlaceholder={sheetConfig.placeholder} multiple={picker === 'tags'} onClose={() => setPicker(null)} onSelect={handleSheetSelect} />
@@ -262,13 +319,17 @@ const styles = StyleSheet.create({
   card: { flex: 1, backgroundColor: colors.softWhite },
   cardDesktop: { borderRadius: radii.xl, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
   header: { minHeight: 68, paddingHorizontal: spacing.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.white },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   close: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  delete: { backgroundColor: colors.dangerWash },
   scroll: { flex: 1 },
   content: { padding: spacing.xl, gap: spacing.xl, paddingBottom: spacing.xxxl },
   typeRow: { gap: spacing.sm, paddingRight: spacing.xl },
   typeOption: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radii.pill, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white },
   typeSelected: { backgroundColor: colors.mintWash, borderColor: colors.mintMist },
   typeTextSelected: { color: colors.mintDeep },
+  reviewWarning: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.warningWash, borderRadius: radii.md, padding: spacing.md },
+  reviewWarningText: { flex: 1, color: colors.slateDark },
   spacePill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: 34, paddingHorizontal: spacing.md, borderRadius: radii.pill, backgroundColor: colors.surface },
   spaceDot: { width: 8, height: 8, borderRadius: 4 },
   spaceName: { color: colors.slateDark },
@@ -284,6 +345,7 @@ const styles = StyleSheet.create({
   moreToggle: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border },
   moreTitle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   moreDetails: { gap: spacing.xl },
+  original: { gap: spacing.sm, backgroundColor: colors.mintWash, borderRadius: radii.md, padding: spacing.lg },
   footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: spacing.lg, gap: spacing.sm, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border },
   muted: { color: colors.slate }, error: { color: colors.danger, textAlign: 'center' }, pressed: { opacity: 0.72 },
 });
