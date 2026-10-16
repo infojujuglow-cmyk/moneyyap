@@ -13,7 +13,7 @@ const typeMeta: Record<Transaction['type'], { icon: keyof typeof Ionicons.glyphM
   refund: { icon: 'return-down-back-outline', color: colors.mintDeep, background: colors.mintWash, label: 'Refund' },
 };
 
-export function TransactionRow({ transaction, onPress, compact = false, desktop = false }: { transaction: Transaction; onPress?: () => void; compact?: boolean; desktop?: boolean }) {
+export function TransactionRow({ transaction, onPress, compact = false, desktop = false, accountContextId }: { transaction: Transaction; onPress?: () => void; compact?: boolean; desktop?: boolean; accountContextId?: string }) {
   const { accounts, categories, spaces } = useFinance();
   const category = categories.find((item) => item.id === transaction.categoryId);
   const parent = categories.find((item) => item.id === category?.parentId);
@@ -24,8 +24,20 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
     ? transaction.type === 'income' || transaction.type === 'refund' ? destinationAccount : sourceAccount ?? destinationAccount
     : accounts.find((item) => item.id === (transaction.accountFromId ?? transaction.accountToId));
   const meta = typeMeta[transaction.type];
-  const positive = transaction.financialEffect === 'income';
-  const neutral = transaction.financialEffect === 'internal_transfer' || transaction.financialEffect === 'adjustment';
+  const direction = accountContextId && transaction.accountToId === accountContextId && transaction.accountFromId !== accountContextId
+    ? 'incoming'
+    : accountContextId && transaction.accountFromId === accountContextId && transaction.accountToId !== accountContextId
+      ? 'outgoing'
+      : transaction.financialEffect === 'income'
+        ? 'incoming'
+        : transaction.financialEffect === 'expense'
+          ? 'outgoing'
+          : 'neutral';
+  const positive = direction === 'incoming';
+  const negative = direction === 'outgoing';
+  const directionColor = positive ? colors.income : negative ? colors.expense : meta.color;
+  const directionBackground = positive ? colors.incomeWash : negative ? colors.expenseWash : meta.background;
+  const amountPrefix = positive ? '+' : negative ? '−' : '';
   const title = transaction.counterpartyName ?? transaction.merchant ?? meta.label;
   const detail = `${category ? `${parent ? `${parent.name} › ` : ''}${category.name}` : meta.label}${space ? ` · ${space.name}` : ''}${account ? ` · ${account.name}` : ''}${transaction.paymentRail !== 'unknown' ? ` · via ${transaction.paymentRail.replaceAll('_', ' ')}` : ''}`;
   const receiver = transaction.type === 'transfer' || transaction.type === 'credit_card_payment'
@@ -34,24 +46,26 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
   const categoryName = category ? `${parent ? `${parent.name} › ` : ''}${category.name}` : '—';
   if (desktop) return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${meta.label}: ${title}`} onPress={onPress} style={({ pressed }) => [styles.row, styles.desktopRow, pressed && styles.pressed]}>
-      <View style={styles.typeCell}><IconCircle name={meta.icon} color={meta.color} background={meta.background} size={36} /></View>
+      {direction !== 'neutral' && <View style={[styles.directionIndicator, { backgroundColor: directionColor }]} />}
+      <View style={styles.typeCell}><IconCircle name={meta.icon} color={directionColor} background={directionBackground} size={36} /></View>
       <View style={styles.accountCell}><AppText variant="caption" numberOfLines={1}>{account?.name ?? '—'}</AppText>{account?.institution && <AppText variant="caption" style={styles.cellMeta} numberOfLines={1}>{account.institution}</AppText>}</View>
       <View style={styles.receiverCell}><AppText variant="caption" numberOfLines={1}>{receiver}</AppText><AppText variant="caption" style={styles.cellMeta} numberOfLines={1}>{meta.label}</AppText></View>
       <AppText variant="caption" style={styles.categoryCell} numberOfLines={1}>{categoryName}</AppText>
       <AppText variant="caption" style={styles.dateCell}>{new Date(transaction.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</AppText>
-      <View style={styles.amountWrap}><AppText variant="bodyMedium" style={{ color: positive ? colors.income : neutral ? colors.slateDark : colors.expense }}>{positive ? '+' : neutral ? '' : '−'}{formatPeso(transaction.amount)}</AppText></View>
+      <View style={styles.amountWrap}><AppText variant="bodyMedium" style={{ color: direction === 'neutral' ? colors.slateDark : directionColor }}>{amountPrefix}{formatPeso(transaction.amount)}</AppText></View>
     </Pressable>
   );
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.row, compact && styles.compact, pressed && styles.pressed]}>
-      <IconCircle name={(category?.icon as keyof typeof Ionicons.glyphMap) ?? meta.icon} color={category?.color ?? meta.color} background={category ? `${category.color}18` : meta.background} size={44} />
+      {direction !== 'neutral' && <View style={[styles.directionIndicator, { backgroundColor: directionColor }]} />}
+      <IconCircle name={(category?.icon as keyof typeof Ionicons.glyphMap) ?? meta.icon} color={directionColor} background={directionBackground} size={44} />
       <View style={styles.copy}>
         <AppText variant="bodyMedium" numberOfLines={1}>{title}</AppText>
         <AppText variant="caption" style={styles.meta} numberOfLines={1}>{detail}</AppText>
       </View>
       <View style={styles.amountWrap}>
-        <AppText variant="bodyMedium" style={{ color: positive ? colors.income : neutral ? colors.slateDark : colors.expense }}>
-          {positive ? '+' : neutral ? '' : '−'}{formatPeso(transaction.amount)}
+        <AppText variant="bodyMedium" style={{ color: direction === 'neutral' ? colors.slateDark : directionColor }}>
+          {amountPrefix}{formatPeso(transaction.amount)}
         </AppText>
         <AppText variant="caption" style={styles.meta}>{new Date(transaction.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</AppText>
       </View>
@@ -60,7 +74,7 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
 }
 
 const styles = StyleSheet.create({
-  row: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
+  row: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, position: 'relative' },
   compact: { minHeight: 64, paddingVertical: spacing.sm },
   desktopRow: { minHeight: 74 },
   copy: { flex: 1, gap: 2 },
@@ -71,6 +85,7 @@ const styles = StyleSheet.create({
   cellMeta: { color: colors.slate, fontSize: 10 },
   dateCell: { width: 105, color: colors.slateDark },
   amountWrap: { alignItems: 'flex-end', gap: 2, minWidth: 92 },
+  directionIndicator: { position: 'absolute', left: -spacing.lg, width: 3, height: 32, borderRadius: 3 },
   meta: { color: colors.slate },
   pressed: { opacity: 0.65, backgroundColor: colors.surface, borderRadius: radii.md },
 });

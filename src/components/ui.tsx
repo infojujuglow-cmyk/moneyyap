@@ -25,11 +25,11 @@ export function BrandMark({ size = 44, inverse = false }: { size?: number; inver
   );
 }
 
-export function Wordmark({ compact = false, inverse = false }: { compact?: boolean; inverse?: boolean }) {
+export function Wordmark({ compact = false, inverse = false, small = false }: { compact?: boolean; inverse?: boolean; small?: boolean }) {
   return (
     <View style={styles.wordmark}>
-      <BrandMark size={compact ? 34 : 42} inverse={inverse} />
-      {!compact && <AppText style={[styles.wordmarkText, { color: inverse ? colors.white : colors.ink }]}>Money<AppText style={[styles.wordmarkText, { color: inverse ? colors.mintMist : colors.mintDark }]}>Yap</AppText></AppText>}
+      <BrandMark size={compact ? 34 : small ? 36 : 42} inverse={inverse} />
+      {!compact && <AppText style={[styles.wordmarkText, small && styles.wordmarkTextSmall, { color: inverse ? colors.white : colors.ink }]}>Money<AppText style={[styles.wordmarkText, small && styles.wordmarkTextSmall, { color: inverse ? colors.mintMist : colors.mintDark }]}>Yap</AppText></AppText>}
     </View>
   );
 }
@@ -113,6 +113,7 @@ const styles = StyleSheet.create({
   text: { color: colors.ink },
   wordmark: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   wordmarkText: { fontFamily: typography.regular, fontSize: 28, lineHeight: 34, letterSpacing: -1.05 },
+  wordmarkTextSmall: { fontSize: 25, lineHeight: 30, letterSpacing: -0.9 },
   button: { minHeight: 52, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.xl },
   pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
   disabled: { opacity: 0.45 },
