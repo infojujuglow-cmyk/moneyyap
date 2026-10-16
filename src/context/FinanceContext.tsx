@@ -1,12 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import { supabase } from '@/lib/supabase';
 import { getActiveWorkspaceId, listAccessibleWorkspaces, loadFinanceSnapshot, rememberActiveWorkspaceId } from '@/services/supabase-finance';
-import type { Account, Category, ChatTurnResponse, ConversationMessage, ImageTransactionAnalysis, ParsedTransactionDraft, Space, Tag, Transaction, TransactionImageAttachment, WorkspaceMember, WorkspaceSummary } from '@/types/finance';
+import type { Account, Category, ChatTurnResponse, ConversationMessage, Counterparty, ImageTransactionAnalysis, ParsedTransactionDraft, Space, Tag, Transaction, TransactionImageAttachment, WorkspaceMember, WorkspaceSummary } from '@/types/finance';
 import { useAuth } from './AuthContext';
 
 interface FinanceContextValue {
   accounts: Account[];
   categories: Category[];
+  counterparties: Counterparty[];
   members: WorkspaceMember[];
   spaces: Space[];
   tags: Tag[];
@@ -73,6 +74,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
   const { session } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -83,14 +85,14 @@ export function FinanceProvider({ children }: PropsWithChildren) {
   const [isLoading, setIsLoading] = useState(true);
   const [lastAdded, setLastAdded] = useState<Transaction | null>(null);
   const clearFinance = useCallback(() => {
-    setWorkspaceId(null); setAccounts([]); setCategories([]); setMembers([]); setSpaces([]); setTags([]); setTransactions([]);
+    setWorkspaceId(null); setAccounts([]); setCategories([]); setCounterparties([]); setMembers([]); setSpaces([]); setTags([]); setTransactions([]);
     setAvailableWorkspaces([]); setSelectedSpaceId(null); setLastAdded(null);
   }, []);
 
   const applySnapshot = useCallback((snapshot: Awaited<ReturnType<typeof loadFinanceSnapshot>>, resetSpace = true) => {
     if (!snapshot) return;
     setWorkspaceId(snapshot.workspaceId);
-    setAccounts(snapshot.accounts); setCategories(snapshot.categories); setMembers(snapshot.members);
+    setAccounts(snapshot.accounts); setCategories(snapshot.categories); setCounterparties(snapshot.counterparties); setMembers(snapshot.members);
     setSpaces(snapshot.spaces); setTags(snapshot.tags); setTransactions(snapshot.transactions);
     setSelectedSpaceId((current) => resetSpace || !current || !snapshot.spaces.some((space) => space.id === current) ? null : current);
     setLastAdded(null);
@@ -332,6 +334,18 @@ export function FinanceProvider({ children }: PropsWithChildren) {
       }
     }
     setTransactions((items) => [transaction, ...items]);
+    if (counterpartyId && transaction.counterpartyName) {
+      const nextCounterparty: Counterparty = {
+        id: counterpartyId,
+        name: transaction.counterpartyName,
+        type: financialEffect === 'internal_transfer' ? 'own_account' : draft.counterpartyType ?? 'unknown',
+        defaultCategoryId: draft.categoryId,
+        defaultClassification: financialEffect,
+      };
+      setCounterparties((items) => items.some((item) => item.id === counterpartyId)
+        ? items.map((item) => item.id === counterpartyId ? nextCounterparty : item)
+        : [...items, nextCounterparty]);
+    }
     setAccounts((items) => applyTransactionToAccountBalances(items, transaction));
     setLastAdded(transaction);
     return transaction;
@@ -501,12 +515,12 @@ export function FinanceProvider({ children }: PropsWithChildren) {
   }, [refreshFinance, workspaceId]);
 
   const value = useMemo<FinanceContextValue>(() => ({
-    accounts, categories, members, spaces, tags, transactions, workspaceId, availableWorkspaces, switchWorkspace, createWorkspace, selectedSpaceId, setSelectedSpaceId,
+    accounts, categories, counterparties, members, spaces, tags, transactions, workspaceId, availableWorkspaces, switchWorkspace, createWorkspace, selectedSpaceId, setSelectedSpaceId,
     isLoading, refreshFinance, lastAdded, parseMessage, sendChatMessage, loadLatestConversation, clearConversationClarification,
     parseTransactionImage, saveDraft, rememberOwnAccountMapping, updateTransaction, deleteTransaction,
     undoLastAdded: async () => { if (lastAdded) await deleteTransaction(lastAdded.id); }, addAccount, updateAccount, setAccountActive,
     addSpace, updateSpace, archiveSpace, addCategory, updateCategory, archiveCategory, addWorkspaceMember,
-  }), [accounts, addAccount, addCategory, addSpace, addWorkspaceMember, archiveCategory, archiveSpace, availableWorkspaces, categories, clearConversationClarification, createWorkspace, deleteTransaction, isLoading, lastAdded, loadLatestConversation, members, parseMessage, parseTransactionImage, refreshFinance, rememberOwnAccountMapping, saveDraft, selectedSpaceId, sendChatMessage, setAccountActive, spaces, switchWorkspace, tags, transactions, updateAccount, updateCategory, updateSpace, updateTransaction, workspaceId]);
+  }), [accounts, addAccount, addCategory, addSpace, addWorkspaceMember, archiveCategory, archiveSpace, availableWorkspaces, categories, clearConversationClarification, counterparties, createWorkspace, deleteTransaction, isLoading, lastAdded, loadLatestConversation, members, parseMessage, parseTransactionImage, refreshFinance, rememberOwnAccountMapping, saveDraft, selectedSpaceId, sendChatMessage, setAccountActive, spaces, switchWorkspace, tags, transactions, updateAccount, updateCategory, updateSpace, updateTransaction, workspaceId]);
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 }

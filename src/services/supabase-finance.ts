@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
-import type { Account, Category, Space, Tag, Transaction, WorkspaceMember, WorkspaceSummary } from '@/types/finance';
+import type { Account, Category, Counterparty, Space, Tag, Transaction, WorkspaceMember, WorkspaceSummary } from '@/types/finance';
 
 export interface FinanceSnapshot {
   workspaceId: string;
   accounts: Account[];
   categories: Category[];
+  counterparties: Counterparty[];
   members: WorkspaceMember[];
   spaces: Space[];
   tags: Tag[];
@@ -28,6 +29,12 @@ const mapCategory = (row: Record<string, unknown>): Category => ({
 const mapSpace = (row: Record<string, unknown>): Space => ({
   id: String(row.id), name: String(row.name), icon: String(row.icon ?? 'grid-outline'), color: String(row.color ?? '#35D6A2'),
   sortOrder: Number(row.sort_order ?? 0), isArchived: Boolean(row.is_archived),
+});
+
+const mapCounterparty = (row: Record<string, unknown>): Counterparty => ({
+  id: String(row.id), name: String(row.display_name), type: row.type as Counterparty['type'],
+  defaultCategoryId: row.default_category_id as string | null,
+  defaultClassification: row.default_classification as Counterparty['defaultClassification'],
 });
 
 const mapTransaction = (row: Record<string, unknown>): Transaction => ({
@@ -88,20 +95,22 @@ export const loadFinanceSnapshot = async (knownWorkspaceId: string): Promise<Fin
   if (!supabase) return null;
   const workspaceId = knownWorkspaceId;
   if (!workspaceId) return null;
-  const [accountResult, categoryResult, transactionResult, memberResult, spaceResult, tagResult] = await Promise.all([
+  const [accountResult, categoryResult, transactionResult, counterpartyResult, memberResult, spaceResult, tagResult] = await Promise.all([
     supabase.from('account_balances').select('*').eq('workspace_id', workspaceId),
     supabase.from('categories').select('*').eq('workspace_id', workspaceId).order('sort_order'),
     supabase.from('transactions').select('*,transaction_tags(tag_id)').eq('workspace_id', workspaceId).order('transaction_date', { ascending: false }),
+    supabase.from('counterparties').select('id,display_name,type,default_category_id,default_classification').eq('workspace_id', workspaceId).order('display_name'),
     supabase.from('workspace_members').select('user_id,role,profiles(full_name)').eq('workspace_id', workspaceId),
     supabase.from('spaces').select('*').eq('workspace_id', workspaceId).order('sort_order'),
     supabase.from('tags').select('*').eq('workspace_id', workspaceId).order('name'),
   ]);
-  for (const result of [accountResult, categoryResult, transactionResult, memberResult, spaceResult, tagResult]) if (result.error) throw result.error;
+  for (const result of [accountResult, categoryResult, transactionResult, counterpartyResult, memberResult, spaceResult, tagResult]) if (result.error) throw result.error;
   return {
     workspaceId,
     accounts: (accountResult.data ?? []).map((row) => mapAccount(row)),
     categories: (categoryResult.data ?? []).map((row) => mapCategory(row)),
     transactions: (transactionResult.data ?? []).map((row) => mapTransaction(row)),
+    counterparties: (counterpartyResult.data ?? []).map((row) => mapCounterparty(row)),
     spaces: (spaceResult.data ?? []).map((row) => mapSpace(row)),
     tags: (tagResult.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name), color: String(row.color) })),
     members: (memberResult.data ?? []).map((row: Record<string, unknown>) => {

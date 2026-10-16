@@ -33,7 +33,7 @@ export default function TransactionsScreen() {
     if (categoryId && item.categoryId !== categoryId) return false;
     if (query) {
       const category = categories.find((candidate) => candidate.id === item.categoryId)?.name ?? '';
-      if (!`${item.merchant ?? ''} ${category} ${item.originalMessage ?? ''}`.toLowerCase().includes(query.toLowerCase())) return false;
+      if (!`${item.counterpartyName ?? ''} ${item.merchant ?? ''} ${category} ${item.originalMessage ?? ''}`.toLowerCase().includes(query.toLowerCase())) return false;
     }
     return true;
   }).sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()), [accountId, categories, categoryId, query, selectedSpaceId, thisMonth, transactions, type]);
@@ -44,7 +44,7 @@ export default function TransactionsScreen() {
   return (
     <Screen title="Transactions" subtitle={`${filtered.length} entries · everything in one place`} contentStyle={desktop ? styles.wideContent : undefined} right={desktop ? <Button label="Add transaction" icon="add" onPress={() => router.push('/manual-transaction')} /> : <Pressable onPress={() => router.push('/manual-transaction')}><IconCircle name="add" background={colors.mint} /></Pressable>}>
       <SpaceSelector />
-      <View style={styles.search}><Ionicons name="search-outline" size={20} color={colors.slate} /><TextInput value={query} onChangeText={setQuery} placeholder="Search merchant or message" placeholderTextColor={colors.slate} style={styles.input} />{query.length > 0 && <Pressable onPress={() => setQuery('')}><Ionicons name="close-circle" size={19} color={colors.slate} /></Pressable>}</View>
+      <View style={styles.search}><Ionicons name="search-outline" size={20} color={colors.slate} /><TextInput value={query} onChangeText={setQuery} placeholder="Search merchant, payer, or message" placeholderTextColor={colors.slate} style={styles.input} />{query.length > 0 && <Pressable onPress={() => setQuery('')}><Ionicons name="close-circle" size={19} color={colors.slate} /></Pressable>}</View>
 
       <View style={[styles.filters, desktop && styles.desktopFilters]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>

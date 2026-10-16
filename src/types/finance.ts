@@ -66,6 +66,14 @@ export interface Category {
   isArchived: boolean;
 }
 
+export interface Counterparty {
+  id: string;
+  name: string;
+  type: CounterpartyType;
+  defaultCategoryId: string | null;
+  defaultClassification: FinancialEffect | null;
+}
+
 export interface Tag {
   id: string;
   name: string;

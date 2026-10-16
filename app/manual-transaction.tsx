@@ -29,6 +29,8 @@ const rails = Object.keys(railLabels) as PaymentRail[];
 const normalize = (value?: string | null) => value?.trim().toLocaleLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '') ?? '';
 const accountDetail = (account: Account) => [account.institution, account.type.replaceAll('_', ' ')].filter(Boolean).join(' · ');
 
+type CounterpartySuggestion = { id: string | null; name: string; count: number; lastUsedAt: string };
+
 function rankByHistory<T>(items: T[], transactions: Transaction[], selectedSpaceId: string | null, merchant: string, idForTransaction: (transaction: Transaction) => string | null, idForItem: (item: T) => string) {
   const merchantKey = normalize(merchant);
   const scores = new Map<string, number>();
@@ -48,7 +50,7 @@ export default function ManualTransactionScreen() {
   const params = useLocalSearchParams<{ draft?: string }>();
   const { width, height } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 700;
-  const { accounts, categories, members, spaces, tags, transactions, selectedSpaceId, setSelectedSpaceId, saveDraft } = useFinance();
+  const { accounts, categories, counterparties, members, spaces, tags, transactions, selectedSpaceId, setSelectedSpaceId, saveDraft } = useFinance();
   const activeAccounts = useMemo(() => accounts.filter((item) => item.isActive), [accounts]);
   const activeSpaces = useMemo(() => spaces.filter((item) => !item.isArchived), [spaces]);
   const initialDraft = useMemo(() => {
@@ -59,6 +61,8 @@ export default function ManualTransactionScreen() {
   const [type, setType] = useState<TransactionType>(initialDraft?.transactionType ?? 'expense');
   const [amount, setAmount] = useState(initialDraft?.amount ? String(initialDraft.amount) : '');
   const [merchant, setMerchant] = useState(initialDraft?.merchant ?? initialDraft?.counterpartyName ?? '');
+  const [counterpartyId, setCounterpartyId] = useState(initialDraft?.counterpartyId ?? null);
+  const [matchedCounterpartyName, setMatchedCounterpartyName] = useState(initialDraft?.counterpartyId ? initialDraft.counterpartyName ?? initialDraft.merchant ?? null : null);
   const [spaceId, setSpaceId] = useState(initialDraft?.spaceId ?? selectedSpaceId ?? activeSpaces[0]?.id ?? null);
   const [tagIds, setTagIds] = useState<string[]>(initialDraft?.tagIds ?? []);
   const [accountId, setAccountId] = useState(initialIncoming ? initialDraft?.accountToId ?? null : initialDraft?.accountFromId ?? null);
@@ -99,13 +103,45 @@ export default function ManualTransactionScreen() {
     if (type !== 'refund' || !normalize(merchant)) return null;
     return transactions.find((transaction) => transaction.spaceId === spaceId && transaction.financialEffect === 'expense' && normalize(transaction.counterpartyName || transaction.merchant) === normalize(merchant)) ?? null;
   }, [merchant, spaceId, transactions, type]);
+  const counterpartySuggestions = useMemo(() => {
+    if (movesMoney) return [];
+    const byName = new Map<string, CounterpartySuggestion>();
+    counterparties.forEach((counterparty) => {
+      const key = normalize(counterparty.name);
+      if (key) byName.set(key, { id: counterparty.id, name: counterparty.name, count: 0, lastUsedAt: '' });
+    });
+    transactions.forEach((transaction) => {
+      if (transaction.spaceId !== spaceId) return;
+      const matchesType = type === 'income'
+        ? transaction.type === 'income'
+        : type === 'expense'
+          ? transaction.financialEffect === 'expense'
+          : type === 'refund'
+            ? transaction.financialEffect === 'expense' || transaction.type === 'refund'
+            : false;
+      if (!matchesType) return;
+      const name = transaction.counterpartyName?.trim() || transaction.merchant?.trim();
+      const key = normalize(name);
+      if (!name || !key) return;
+      const current = byName.get(key);
+      const transactionTime = new Date(transaction.transactionDate).getTime();
+      const currentTime = current?.lastUsedAt ? new Date(current.lastUsedAt).getTime() : -Infinity;
+      byName.set(key, {
+        id: transaction.counterpartyId ?? current?.id ?? null,
+        name: transactionTime >= currentTime ? name : current!.name,
+        count: (current?.count ?? 0) + 1,
+        lastUsedAt: transactionTime >= currentTime ? transaction.transactionDate : current!.lastUsedAt,
+      });
+    });
+    return [...byName.values()].sort((left, right) => right.count - left.count || (right.lastUsedAt ? new Date(right.lastUsedAt).getTime() : 0) - (left.lastUsedAt ? new Date(left.lastUsedAt).getTime() : 0) || left.name.localeCompare(right.name));
+  }, [counterparties, movesMoney, spaceId, transactions, type]);
   const parsedAmount = Number(amount.replace(/,/g, ''));
   const needsCategory = type === 'expense' || type === 'income' || type === 'refund';
   const valid = Boolean(spaceId && effectiveAccountId && parsedAmount > 0 && (!needsCategory || effectiveCategoryId) && (!movesMoney || effectiveDestinationId && effectiveAccountId !== effectiveDestinationId));
 
   const selectType = (nextType: TransactionType) => {
     setType(nextType); setError(null);
-    setAccountId(null); setDestinationId(null); setCategoryId(null);
+    setAccountId(null); setDestinationId(null); setCategoryId(null); setCounterpartyId(null); setMatchedCounterpartyName(null);
   };
   const selectSpace = (nextSpaceId: string) => {
     setSpaceId(nextSpaceId); setSelectedSpaceId(nextSpaceId);
@@ -119,9 +155,9 @@ export default function ManualTransactionScreen() {
       await saveDraft({
         transactionType: type,
         financialEffect: type === 'expense' ? 'expense' : type === 'income' || type === 'refund' ? 'income' : 'internal_transfer',
-        paymentRail, amount: parsedAmount, currency: 'PHP', merchant: merchant.trim() || null,
-        counterpartyId: initialDraft?.counterpartyId ?? null, counterpartyName: merchant.trim() || initialDraft?.counterpartyName || null,
-        counterpartyType: initialDraft?.counterpartyType ?? (movesMoney ? 'own_account' : 'unknown'),
+        paymentRail, amount: parsedAmount, currency: 'PHP', merchant: type === 'income' ? null : merchant.trim() || null,
+        counterpartyId, counterpartyName: merchant.trim() || initialDraft?.counterpartyName || null,
+        counterpartyType: initialDraft?.counterpartyType ?? (movesMoney ? 'own_account' : type === 'expense' || type === 'refund' ? 'merchant' : 'unknown'),
         counterpartyIdentifiers: initialDraft?.counterpartyIdentifiers ?? {}, ownershipStatus: movesMoney ? 'owned' : 'external',
         spaceId, categoryId: needsCategory ? effectiveCategoryId : null, tagIds,
         accountFromId: type === 'income' || type === 'refund' ? null : effectiveAccountId,
@@ -178,7 +214,7 @@ export default function ManualTransactionScreen() {
             </ScrollView>
             <Pressable onPress={() => setPicker('space')} style={({ pressed }) => [styles.spacePill, pressed && styles.pressed]}><View style={[styles.spaceDot, { backgroundColor: selectedSpace?.color ?? colors.mint }]} /><AppText variant="caption" style={styles.spaceName}>{selectedSpace?.name ?? 'Choose space'}</AppText><Ionicons name="chevron-down" size={14} color={colors.slate} /></Pressable>
             <View style={styles.amountBlock}><AppText variant="eyebrow" style={styles.muted}>Amount</AppText><View style={styles.amountField}><AppText style={styles.currency}>₱</AppText><TextInput value={amount} onChangeText={setAmount} placeholder="0" placeholderTextColor={colors.borderStrong} keyboardType="decimal-pad" autoFocus style={styles.amountInput} /></View></View>
-            <LabeledInput label={labels.description} value={merchant} onChangeText={setMerchant} placeholder={labels.descriptionPlaceholder} />
+            <CounterpartyInput label={labels.description} value={merchant} onChangeText={(value) => { setMerchant(value); if (normalize(value) !== normalize(matchedCounterpartyName)) { setCounterpartyId(null); setMatchedCounterpartyName(null); } }} placeholder={labels.descriptionPlaceholder} suggestions={counterpartySuggestions} onSelect={(suggestion) => { setMerchant(suggestion.name); setCounterpartyId(suggestion.id); setMatchedCounterpartyName(suggestion.name); }} />
             <SmartSelectField label={labels.account} value={selectedAccount?.name} placeholder="Choose an account" onPress={() => setPicker('account')} hint={!accountId && selectedAccount?.id === suggestedAccountId ? 'Suggested from recent activity' : null} />
             {movesMoney && <SmartSelectField label={labels.destination} value={selectedDestination?.name} placeholder="Choose an account" onPress={() => setPicker('destination')} hint={!destinationId && selectedDestination?.id === suggestedDestinationId ? 'Suggested from recent activity' : null} />}
             {needsCategory && <SmartSelectField label={type === 'refund' ? 'Original category' : 'Category'} value={categoryLabel(selectedCategory)} placeholder="Choose a category" onPress={() => setPicker('category')} hint={originalMatch?.categoryId === effectiveCategoryId ? 'Matched from the original transaction' : !categoryId && selectedCategory?.id === suggestedCategoryId ? 'Suggested from similar transactions' : null} />}
@@ -200,6 +236,17 @@ export default function ManualTransactionScreen() {
 
 function LabeledInput({ label, value, onChangeText, placeholder, multiline = false }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; multiline?: boolean }) {
   return <View style={styles.field}><AppText variant="eyebrow" style={styles.muted}>{label}</AppText><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.slate} multiline={multiline} style={[styles.textInput, multiline && styles.multiline]} /></View>;
+}
+
+function CounterpartyInput({ label, value, onChangeText, placeholder, suggestions, onSelect }: { label: string; value: string; onChangeText: (value: string) => void; placeholder: string; suggestions: CounterpartySuggestion[]; onSelect: (suggestion: CounterpartySuggestion) => void }) {
+  const [open, setOpen] = useState(false);
+  const query = normalize(value);
+  const visible = suggestions.filter((item) => !query || normalize(item.name).includes(query)).slice(0, 6);
+  return <View style={styles.field}>
+    <AppText variant="eyebrow" style={styles.muted}>{label}</AppText>
+    <View style={styles.counterpartyInputWrap}><Ionicons name="business-outline" size={19} color={colors.slate} /><TextInput value={value} onFocus={() => setOpen(true)} onChangeText={(next) => { onChangeText(next); setOpen(true); }} placeholder={placeholder} placeholderTextColor={colors.slate} autoCapitalize="words" autoCorrect={false} style={styles.counterpartyInput} />{value ? <Pressable accessibilityLabel="Clear name" onPress={() => { onChangeText(''); setOpen(true); }}><Ionicons name="close-circle" size={19} color={colors.slate} /></Pressable> : null}</View>
+    {open && visible.length > 0 && <View style={styles.counterpartySuggestions}>{visible.map((item, index) => <Pressable key={`${item.id ?? normalize(item.name)}-${item.name}`} onPress={() => { onSelect(item); setOpen(false); }} style={({ pressed }) => [styles.counterpartySuggestion, index > 0 && styles.counterpartyBorder, pressed && styles.pressed]}><View style={styles.counterpartyIcon}><Ionicons name="business" size={17} color={colors.mintDeep} /></View><View style={styles.counterpartyText}><AppText variant="bodyMedium">{item.name}</AppText><AppText variant="caption" style={styles.muted}>{item.count ? `${item.count === 1 ? 'Used once' : `Used ${item.count} times`} · Last ${new Date(item.lastUsedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}` : 'Saved name'}</AppText></View><Ionicons name="arrow-forward" size={16} color={colors.slate} /></Pressable>)}</View>}
+  </View>;
 }
 
 const styles = StyleSheet.create({
@@ -226,6 +273,8 @@ const styles = StyleSheet.create({
   amountInput: { minWidth: 90, maxWidth: '80%', fontFamily: typography.bold, fontSize: 54, lineHeight: 64, letterSpacing: -2.2, color: colors.ink, textAlign: 'center', outlineStyle: 'none' } as never,
   field: { gap: spacing.sm },
   textInput: { minHeight: 56, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontFamily: typography.regular, fontSize: 16, color: colors.ink, outlineStyle: 'none' } as never,
+  counterpartyInputWrap: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingHorizontal: spacing.md }, counterpartyInput: { flex: 1, minHeight: 54, fontFamily: typography.regular, fontSize: 16, color: colors.ink, outlineStyle: 'none' } as never,
+  counterpartySuggestions: { marginTop: -spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, backgroundColor: colors.white, overflow: 'hidden' }, counterpartySuggestion: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md }, counterpartyBorder: { borderTopWidth: 1, borderTopColor: colors.border }, counterpartyIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.mintWash }, counterpartyText: { flex: 1, gap: 2 },
   multiline: { minHeight: 88, textAlignVertical: 'top' },
   moreToggle: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border },
   moreTitle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
