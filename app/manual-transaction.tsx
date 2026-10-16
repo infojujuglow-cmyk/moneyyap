@@ -47,7 +47,7 @@ function rankByHistory<T>(items: T[], transactions: Transaction[], selectedSpace
 }
 
 export default function ManualTransactionScreen() {
-  const params = useLocalSearchParams<{ draft?: string }>();
+  const params = useLocalSearchParams<{ draft?: string; accountId?: string; spaceId?: string }>();
   const { width, height } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 700;
   const { accounts, categories, counterparties, members, spaces, tags, transactions, selectedSpaceId, setSelectedSpaceId, saveDraft } = useFinance();
@@ -63,9 +63,10 @@ export default function ManualTransactionScreen() {
   const [merchant, setMerchant] = useState(initialDraft?.merchant ?? initialDraft?.counterpartyName ?? '');
   const [counterpartyId, setCounterpartyId] = useState(initialDraft?.counterpartyId ?? null);
   const [matchedCounterpartyName, setMatchedCounterpartyName] = useState(initialDraft?.counterpartyId ? initialDraft.counterpartyName ?? initialDraft.merchant ?? null : null);
-  const [spaceId, setSpaceId] = useState(initialDraft?.spaceId ?? selectedSpaceId ?? activeSpaces[0]?.id ?? null);
+  const initialAccount = accounts.find((account) => account.id === params.accountId);
+  const [spaceId, setSpaceId] = useState(initialDraft?.spaceId ?? params.spaceId ?? initialAccount?.spaceId ?? selectedSpaceId ?? activeSpaces[0]?.id ?? null);
   const [tagIds, setTagIds] = useState<string[]>(initialDraft?.tagIds ?? []);
-  const [accountId, setAccountId] = useState(initialIncoming ? initialDraft?.accountToId ?? null : initialDraft?.accountFromId ?? null);
+  const [accountId, setAccountId] = useState(initialIncoming ? initialDraft?.accountToId ?? params.accountId ?? null : initialDraft?.accountFromId ?? params.accountId ?? null);
   const [destinationId, setDestinationId] = useState(initialDraft?.accountToId ?? null);
   const [categoryId, setCategoryId] = useState(initialDraft?.categoryId ?? null);
   const [paymentRail, setPaymentRail] = useState<PaymentRail>(initialDraft?.paymentRail ?? 'unknown');
@@ -141,7 +142,11 @@ export default function ManualTransactionScreen() {
 
   const selectType = (nextType: TransactionType) => {
     setType(nextType); setError(null);
-    setAccountId(null); setDestinationId(null); setCategoryId(null); setCounterpartyId(null); setMatchedCounterpartyName(null);
+    const contextualAccountId = desktop && initialAccount?.isActive ? initialAccount.id : null;
+    const contextIsCardDestination = nextType === 'credit_card_payment' && initialAccount?.type === 'credit_card';
+    setAccountId(contextIsCardDestination ? null : contextualAccountId);
+    setDestinationId(contextIsCardDestination ? contextualAccountId : null);
+    setCategoryId(null); setCounterpartyId(null); setMatchedCounterpartyName(null);
   };
   const selectSpace = (nextSpaceId: string) => {
     setSpaceId(nextSpaceId); setSelectedSpaceId(nextSpaceId);

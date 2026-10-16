@@ -61,7 +61,7 @@ export default function TransactionsScreen() {
         </ScrollView>}
       </View>
 
-      {filtered.length ? <Surface style={styles.list}>{desktop && <View style={styles.tableHeader}><View style={styles.titleHeader}><AppText variant="eyebrow" style={styles.headerText}>TRANSACTION</AppText></View><AppText variant="eyebrow" style={styles.detailHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.detailHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.detailHeader}>SPACE</AppText><AppText variant="eyebrow" style={styles.dateHeader}>DATE</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText></View>}{filtered.map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, desktop && styles.desktopSeparator]} />}<TransactionRow transaction={item} desktop={desktop} onPress={() => router.push(`/transaction/${item.id}`)} /></View>)}</Surface> : <Surface><EmptyState icon="receipt-outline" title="Nothing here yet" body="Try another filter, or tell MoneyYap about a transaction." /></Surface>}
+      {filtered.length ? <Surface style={styles.list}>{desktop && <View style={styles.tableHeader}><AppText variant="eyebrow" style={styles.typeHeader}>TYPE</AppText><AppText variant="eyebrow" style={styles.accountHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.receiverHeader}>COUNTERPARTY / DESTINATION</AppText><AppText variant="eyebrow" style={styles.categoryHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.dateHeader}>DATE</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText></View>}{filtered.map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, desktop && styles.desktopSeparator]} />}<TransactionRow transaction={item} desktop={desktop} onPress={() => router.push(`/transaction/${item.id}`)} /></View>)}</Surface> : <Surface><EmptyState icon="receipt-outline" title="Nothing here yet" body="Try another filter, or tell MoneyYap about a transaction." /></Surface>}
     </Screen>
   );
 }
@@ -78,9 +78,10 @@ const styles = StyleSheet.create({
   separator: { height: 1, backgroundColor: colors.border, marginLeft: 56 },
   desktopSeparator: { marginLeft: 0 },
   tableHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44, borderBottomWidth: 1, borderBottomColor: colors.border },
-  titleHeader: { flex: 1, paddingLeft: 60 },
-  detailHeader: { width: '14%', color: colors.slate },
+  typeHeader: { width: 52, textAlign: 'center', color: colors.slate },
+  accountHeader: { flex: 1, minWidth: 110, color: colors.slate },
+  receiverHeader: { flex: 1.2, minWidth: 130, color: colors.slate },
+  categoryHeader: { width: '18%', minWidth: 110, color: colors.slate },
   dateHeader: { width: 105, color: colors.slate },
   amountHeader: { minWidth: 92, textAlign: 'right', color: colors.slate },
-  headerText: { color: colors.slate },
 });
