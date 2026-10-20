@@ -61,34 +61,37 @@ export function DesktopSidebar() {
       <Ionicons name="chevron-expand" size={15} color={colors.slate} />
     </Pressable>
     <ScrollView style={styles.navigationScroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.navigation}>
-      <View style={styles.accountsHeading}>
-        <AppText variant="eyebrow" style={styles.sectionLabel}>ACCOUNTS</AppText>
-        <Pressable accessibilityLabel="Add account" onPress={() => router.push('/add-account')} style={({ hovered, pressed }) => [styles.addAccount, interactionTransition, (hovered || pressed) && styles.navHover]}>
-          <Ionicons name="add" size={17} color={colors.mintDeep} />
-        </Pressable>
-      </View>
-      <View style={styles.accountGroups}>
-        {accountGroups.map(({ key, name: institution, accounts: institutionAccounts }) => {
-          const collapsed = collapsedInstitutions[key] ?? false;
-          return <View key={key}>
-            <Pressable accessibilityRole="button" accessibilityState={{ expanded: !collapsed }} onPress={() => setCollapsedInstitutions((current) => ({ ...current, [key]: !collapsed }))} style={({ hovered }) => [styles.institutionHeader, interactionTransition, hovered && styles.navHover]}>
-              <AppText variant="caption" style={styles.institutionName} numberOfLines={1}>{institution}</AppText>
-              <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={colors.slate} />
-            </Pressable>
-            {!collapsed && institutionAccounts.map((account) => {
-              const selected = pathname === `/account/${account.id}`;
-              return <Pressable key={account.id} accessibilityRole="link" accessibilityState={{ selected }} onPress={() => router.push(`/account/${account.id}`)} style={({ hovered, pressed }) => [styles.accountItem, interactionTransition, selected && styles.accountSelected, (hovered || pressed) && !selected && styles.navHover]}>
-                {selected && <View style={styles.activeIndicator} />}
-                <View style={[styles.accountIcon, { backgroundColor: `${account.accent}14` }]}><Ionicons name={accountIcon(account)} size={14} color={account.accent} /></View>
-                <View style={styles.accountCopy}><AppText variant="caption" numberOfLines={1} style={[styles.accountName, selected && styles.selectedText]}>{account.name}</AppText><AppText variant="caption" numberOfLines={1} style={styles.accountBalance}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText></View>
-              </Pressable>;
-            })}
-          </View>;
-        })}
-        <Pressable onPress={() => router.push('/accounts')} style={({ hovered, pressed }) => [styles.manageAccounts, interactionTransition, (hovered || pressed) && styles.navHover]}>
-          <Ionicons name="settings-outline" size={15} color={colors.slate} />
-          <AppText variant="caption" style={styles.manageAccountsText}>Manage accounts</AppText>
-        </Pressable>
+      <View style={styles.accountsPanel}>
+        <View style={styles.accountsHeading}>
+          <AppText variant="eyebrow" style={styles.accountsLabel}>ACCOUNTS</AppText>
+          <Pressable accessibilityLabel="Add account" onPress={() => router.push('/add-account')} style={({ hovered, pressed }) => [styles.addAccount, interactionTransition, (hovered || pressed) && styles.navHover]}>
+            <Ionicons name="add" size={17} color={colors.mintDeep} />
+          </Pressable>
+        </View>
+        <View style={styles.accountGroups}>
+          {accountGroups.map(({ key, name: institution, accounts: institutionAccounts }) => {
+            const collapsed = collapsedInstitutions[key] ?? false;
+            return <View key={key}>
+              <Pressable accessibilityRole="button" accessibilityState={{ expanded: !collapsed }} onPress={() => setCollapsedInstitutions((current) => ({ ...current, [key]: !collapsed }))} style={({ hovered }) => [styles.institutionHeader, interactionTransition, hovered && styles.navHover]}>
+                <AppText variant="caption" style={styles.institutionName} numberOfLines={1}>{institution}</AppText>
+                <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={colors.slate} />
+              </Pressable>
+              {!collapsed && institutionAccounts.map((account) => {
+                const selected = pathname === `/account/${account.id}`;
+                return <Pressable key={account.id} accessibilityRole="link" accessibilityState={{ selected }} onPress={() => router.push(`/account/${account.id}`)} style={({ hovered, pressed }) => [styles.accountItem, interactionTransition, selected && styles.accountSelected, (hovered || pressed) && !selected && styles.navHover]}>
+                  {selected && <View style={styles.activeIndicator} />}
+                  <View style={[styles.accountIcon, { backgroundColor: `${account.accent}14` }]}><Ionicons name={accountIcon(account)} size={14} color={account.accent} /></View>
+                  <View style={styles.accountCopy}><AppText variant="caption" numberOfLines={1} style={[styles.accountName, selected && styles.selectedText]}>{account.name}</AppText><AppText variant="caption" numberOfLines={1} style={styles.accountBalance}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText></View>
+                </Pressable>;
+              })}
+            </View>;
+          })}
+          <View style={styles.accountDivider} />
+          <Pressable onPress={() => router.push('/accounts')} style={({ hovered, pressed }) => [styles.manageAccounts, interactionTransition, (hovered || pressed) && styles.navHover]}>
+            <Ionicons name="settings-outline" size={15} color={colors.slate} />
+            <AppText variant="caption" style={styles.manageAccountsText}>Manage accounts</AppText>
+          </Pressable>
+        </View>
       </View>
       <AppText variant="eyebrow" style={styles.sectionLabel}>YOUR MONEY</AppText>
       {mainItems.map(navItem)}
@@ -116,9 +119,11 @@ const styles = StyleSheet.create({
   navigationScroll: { flex: 1 },
   navigation: { flexGrow: 1, paddingTop: spacing.lg, paddingBottom: spacing.sm },
   sectionLabel: { color: colors.slate, fontSize: 10, lineHeight: 14, letterSpacing: 1, paddingHorizontal: spacing.sm, marginBottom: spacing.xs },
+  accountsPanel: { backgroundColor: colors.softWhite, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, paddingHorizontal: spacing.xs, paddingTop: spacing.md, paddingBottom: spacing.xs, marginBottom: spacing.xl },
+  accountsLabel: { color: colors.slate, fontSize: 10, lineHeight: 14, letterSpacing: 1, paddingLeft: spacing.sm },
   accountsHeading: { minHeight: 26, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   addAccount: { width: 26, height: 26, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center', marginTop: -7, marginRight: 2 },
-  accountGroups: { gap: 2, marginBottom: spacing.xl },
+  accountGroups: { gap: 2 },
   institutionHeader: { minHeight: 28, paddingHorizontal: spacing.sm, borderRadius: radii.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   institutionName: { flex: 1, color: colors.slate, fontSize: 11 },
   accountItem: { minHeight: 42, paddingHorizontal: spacing.sm, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, position: 'relative', overflow: 'hidden' },
@@ -127,6 +132,7 @@ const styles = StyleSheet.create({
   accountCopy: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   accountName: { flex: 1, minWidth: 0, color: colors.slateDark, fontFamily: typography.medium, fontSize: 12, lineHeight: 16 },
   accountBalance: { flexShrink: 0, maxWidth: 88, color: colors.slate, fontFamily: typography.medium, fontSize: 10.5, lineHeight: 14, textAlign: 'right' },
+  accountDivider: { height: 1, backgroundColor: colors.border, marginHorizontal: spacing.sm, marginTop: spacing.xs },
   manageAccounts: { minHeight: 32, paddingHorizontal: spacing.sm, borderRadius: radii.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   manageAccountsText: { color: colors.slate, fontSize: 11 },
   manageLabel: { marginTop: spacing.xl },

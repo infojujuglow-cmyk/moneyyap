@@ -33,7 +33,7 @@ export default function TransactionsScreen() {
     if (categoryId && item.categoryId !== categoryId) return false;
     if (query) {
       const category = categories.find((candidate) => candidate.id === item.categoryId)?.name ?? '';
-      if (!`${item.counterpartyName ?? ''} ${item.merchant ?? ''} ${category} ${item.originalMessage ?? ''}`.toLowerCase().includes(query.toLowerCase())) return false;
+      if (!`${item.counterpartyName ?? ''} ${item.merchant ?? ''} ${category} ${item.notes ?? ''} ${item.originalMessage ?? ''}`.toLowerCase().includes(query.toLowerCase())) return false;
     }
     return true;
   }).sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()), [accountId, categories, categoryId, query, selectedSpaceId, thisMonth, transactions, type]);
@@ -44,7 +44,7 @@ export default function TransactionsScreen() {
   return (
     <Screen title="Transactions" subtitle={`${filtered.length} entries · everything in one place`} contentStyle={desktop ? styles.wideContent : undefined} right={desktop ? <Button label="Add transaction" icon="add" onPress={() => router.push('/manual-transaction')} /> : <Pressable onPress={() => router.push('/manual-transaction')}><IconCircle name="add" background={colors.mint} /></Pressable>}>
       <SpaceSelector />
-      <View style={styles.search}><Ionicons name="search-outline" size={20} color={colors.slate} /><TextInput value={query} onChangeText={setQuery} placeholder="Search merchant, payer, or message" placeholderTextColor={colors.slate} style={styles.input} />{query.length > 0 && <Pressable onPress={() => setQuery('')}><Ionicons name="close-circle" size={19} color={colors.slate} /></Pressable>}</View>
+      <View style={styles.search}><Ionicons name="search-outline" size={20} color={colors.slate} /><TextInput value={query} onChangeText={setQuery} placeholder="Search merchant, payer, notes, or message" placeholderTextColor={colors.slate} style={styles.input} />{query.length > 0 && <Pressable onPress={() => setQuery('')}><Ionicons name="close-circle" size={19} color={colors.slate} /></Pressable>}</View>
 
       <View style={[styles.filters, desktop && styles.desktopFilters]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
@@ -61,7 +61,7 @@ export default function TransactionsScreen() {
         </ScrollView>}
       </View>
 
-      {filtered.length ? <Surface style={styles.list}>{desktop && <View style={styles.tableHeader}><AppText variant="eyebrow" style={styles.typeHeader}>TYPE</AppText><AppText variant="eyebrow" style={styles.accountHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.receiverHeader}>COUNTERPARTY / DESTINATION</AppText><AppText variant="eyebrow" style={styles.categoryHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.dateHeader}>DATE</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText></View>}{filtered.map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, desktop && styles.desktopSeparator]} />}<TransactionRow transaction={item} desktop={desktop} onPress={() => router.push(`/transaction/${item.id}`)} /></View>)}</Surface> : <Surface><EmptyState icon="receipt-outline" title="Nothing here yet" body="Try another filter, or tell MoneyYap about a transaction." /></Surface>}
+      {filtered.length ? <Surface style={styles.list}>{desktop && <View style={styles.tableHeader}><AppText variant="eyebrow" style={styles.typeHeader}>TYPE</AppText><AppText variant="eyebrow" style={styles.accountHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.receiverHeader}>COUNTERPARTY / DESTINATION</AppText><AppText variant="eyebrow" style={styles.categoryHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.notesHeader}>NOTES</AppText><AppText variant="eyebrow" style={styles.dateHeader}>DATE</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText></View>}{filtered.map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, desktop && styles.desktopSeparator]} />}<TransactionRow transaction={item} desktop={desktop} onPress={() => router.push(`/transaction/${item.id}`)} /></View>)}</Surface> : <Surface><EmptyState icon="receipt-outline" title="Nothing here yet" body="Try another filter, or tell MoneyYap about a transaction." /></Surface>}
     </Screen>
   );
 }
@@ -79,9 +79,10 @@ const styles = StyleSheet.create({
   desktopSeparator: { marginLeft: 0 },
   tableHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44, borderBottomWidth: 1, borderBottomColor: colors.border },
   typeHeader: { width: 52, textAlign: 'center', color: colors.slate },
-  accountHeader: { flex: 1, minWidth: 110, color: colors.slate },
-  receiverHeader: { flex: 1.2, minWidth: 130, color: colors.slate },
-  categoryHeader: { width: '18%', minWidth: 110, color: colors.slate },
-  dateHeader: { width: 105, color: colors.slate },
+  accountHeader: { flex: 0.9, minWidth: 100, color: colors.slate },
+  receiverHeader: { flex: 1.1, minWidth: 120, color: colors.slate },
+  categoryHeader: { width: '14%', minWidth: 100, color: colors.slate },
+  notesHeader: { width: '15%', minWidth: 110, color: colors.slate },
+  dateHeader: { width: 100, color: colors.slate },
   amountHeader: { minWidth: 92, textAlign: 'right', color: colors.slate },
 });

@@ -51,6 +51,7 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
       <View style={styles.accountCell}><AppText variant="caption" numberOfLines={1}>{account?.name ?? '—'}</AppText>{account?.institution && <AppText variant="caption" style={styles.cellMeta} numberOfLines={1}>{account.institution}</AppText>}</View>
       <View style={styles.receiverCell}><AppText variant="caption" numberOfLines={1}>{receiver}</AppText><AppText variant="caption" style={styles.cellMeta} numberOfLines={1}>{meta.label}</AppText></View>
       <AppText variant="caption" style={styles.categoryCell} numberOfLines={1}>{categoryName}</AppText>
+      <AppText variant="caption" style={styles.notesCell} numberOfLines={2}>{transaction.notes?.trim() || '—'}</AppText>
       <AppText variant="caption" style={styles.dateCell}>{new Date(transaction.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</AppText>
       <View style={styles.amountWrap}><AppText variant="bodyMedium" style={{ color: direction === 'neutral' ? colors.slateDark : directionColor }}>{amountPrefix}{formatPeso(transaction.amount)}</AppText></View>
     </Pressable>
@@ -79,11 +80,12 @@ const styles = StyleSheet.create({
   desktopRow: { minHeight: 74 },
   copy: { flex: 1, gap: 2 },
   typeCell: { width: 52, alignItems: 'center' },
-  accountCell: { flex: 1, minWidth: 110, gap: 2 },
-  receiverCell: { flex: 1.2, minWidth: 130, gap: 2 },
-  categoryCell: { width: '18%', minWidth: 110, color: colors.slateDark },
+  accountCell: { flex: 0.9, minWidth: 100, gap: 2 },
+  receiverCell: { flex: 1.1, minWidth: 120, gap: 2 },
+  categoryCell: { width: '14%', minWidth: 100, color: colors.slateDark },
+  notesCell: { width: '15%', minWidth: 110, color: colors.slate },
   cellMeta: { color: colors.slate, fontSize: 10 },
-  dateCell: { width: 105, color: colors.slateDark },
+  dateCell: { width: 100, color: colors.slateDark },
   amountWrap: { alignItems: 'flex-end', gap: 2, minWidth: 92 },
   directionIndicator: { position: 'absolute', left: -spacing.lg, width: 3, height: 32, borderRadius: 3 },
   meta: { color: colors.slate },

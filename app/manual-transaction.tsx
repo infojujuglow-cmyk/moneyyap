@@ -280,11 +280,11 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
             {movesMoney && <SmartSelectField label={labels.destination} value={selectedDestination?.name} placeholder="Choose an account" onPress={() => setPicker('destination')} hint={!destinationId && selectedDestination?.id === suggestedDestinationId ? 'Suggested from recent activity' : null} />}
             {needsCategory && <SmartSelectField label={type === 'refund' ? 'Original category' : 'Category'} value={categoryLabel(selectedCategory)} placeholder="Choose a category" onPress={() => setPicker('category')} hint={originalMatch?.categoryId === effectiveCategoryId ? 'Matched from the original transaction' : !categoryId && selectedCategory?.id === suggestedCategoryId ? 'Suggested from similar transactions' : null} />}
             <TransactionDateTimeField value={transactionDate} onChange={setTransactionDate} />
+            <LabeledInput label="Notes · optional" value={notes} onChangeText={setNotes} placeholder="Add a note" multiline />
             <Pressable onPress={() => setMoreOpen((current) => !current)} style={({ pressed }) => [styles.moreToggle, pressed && styles.pressed]}><View style={styles.moreTitle}><Ionicons name="options-outline" size={19} color={colors.slateDark} /><AppText variant="bodyMedium">More details</AppText></View><Ionicons name={moreOpen ? 'chevron-up' : 'chevron-down'} size={19} color={colors.slate} /></Pressable>
             {moreOpen && <View style={styles.moreDetails}>
               <SmartSelectField label="Payment method / rail" value={railLabels[paymentRail]} placeholder="Not specified" onPress={() => setPicker('rail')} hint="Separate from the financial account above" />
               {tags.length > 0 && <SmartSelectField label="Tags · optional" value={tagIds.length ? `${tagIds.length} selected` : null} placeholder="Choose tags" onPress={() => setPicker('tags')} />}
-              <LabeledInput label="Notes · optional" value={notes} onChangeText={setNotes} placeholder="Add a note" multiline />
               {editingTransaction?.originalMessage && <View style={styles.original}><AppText variant="eyebrow" style={styles.muted}>Original message</AppText><AppText>“{editingTransaction.originalMessage}”</AppText></View>}
             </View>}
           </ScrollView>

@@ -29,7 +29,7 @@ export default function AccountDetailScreen() {
     <Surface style={[styles.summary, desktop && styles.desktopSummary]}><View style={[styles.icon, desktop && styles.desktopIcon, { backgroundColor: `${account.accent}18` }]}><Ionicons name={account.type === 'credit_card' ? 'card-outline' : desktop && account.type === 'cash' ? 'cash-outline' : desktop && account.type === 'ewallet' ? 'phone-portrait-outline' : 'business-outline'} size={26} color={account.accent} /></View><View style={desktop && styles.balanceCopy}><AppText variant="eyebrow" style={styles.muted}>CURRENT BALANCE</AppText><AppText variant="display">{formatPeso(account.type === 'credit_card' ? Math.abs(account.balance) : account.balance)}</AppText><AppText style={styles.muted}>{space ? `${space.name} Space` : 'Available in any Space'} · {account.type.replace('_', ' ')}</AppText></View>{desktop && <View style={styles.activitySummary}><AppText variant="eyebrow" style={styles.muted}>TRANSACTIONS</AppText><AppText variant="h2">{allActivity.length}</AppText><AppText variant="caption" style={styles.muted}>All recorded activity</AppText></View>}</Surface>
     <View style={styles.section}><SectionHeader title={desktop ? 'Account transactions' : 'Recent activity'} />
       <Surface style={styles.list}>
-        {desktop && activity.length > 0 && <View style={styles.tableHeader}><AppText variant="eyebrow" style={styles.typeHeader}>TYPE</AppText><AppText variant="eyebrow" style={styles.accountHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.receiverHeader}>COUNTERPARTY / DESTINATION</AppText><AppText variant="eyebrow" style={styles.categoryHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.dateHeader}>DATE</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText></View>}
+        {desktop && activity.length > 0 && <View style={styles.tableHeader}><AppText variant="eyebrow" style={styles.typeHeader}>TYPE</AppText><AppText variant="eyebrow" style={styles.accountHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.receiverHeader}>COUNTERPARTY / DESTINATION</AppText><AppText variant="eyebrow" style={styles.categoryHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.notesHeader}>NOTES</AppText><AppText variant="eyebrow" style={styles.dateHeader}>DATE</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText></View>}
         {activity.length ? activity.map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, desktop && styles.desktopSeparator]} />}<TransactionRow transaction={item} compact={!desktop} desktop={desktop} accountContextId={account.id} onPress={() => router.push(`/transaction/${item.id}`)} /></View>) : <EmptyState icon="receipt-outline" title="No activity yet" body="Transactions linked to this account will appear here." action={desktop && account.isActive ? <Button label="Add first transaction" icon="add" onPress={addTransaction} /> : undefined} />}
       </Surface>
     </View>
@@ -54,10 +54,11 @@ const styles = StyleSheet.create({
   desktopSeparator: { marginLeft: 0 },
   tableHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44, borderBottomWidth: 1, borderBottomColor: colors.border },
   typeHeader: { width: 52, textAlign: 'center', color: colors.slate },
-  accountHeader: { flex: 1, minWidth: 110, color: colors.slate },
-  receiverHeader: { flex: 1.2, minWidth: 130, color: colors.slate },
-  categoryHeader: { width: '18%', minWidth: 110, color: colors.slate },
-  dateHeader: { width: 105, color: colors.slate },
+  accountHeader: { flex: 0.9, minWidth: 100, color: colors.slate },
+  receiverHeader: { flex: 1.1, minWidth: 120, color: colors.slate },
+  categoryHeader: { width: '14%', minWidth: 100, color: colors.slate },
+  notesHeader: { width: '15%', minWidth: 110, color: colors.slate },
+  dateHeader: { width: 100, color: colors.slate },
   amountHeader: { minWidth: 92, textAlign: 'right', color: colors.slate },
   help: { color: colors.slate, textAlign: 'center' },
   headerActions: { flexDirection: 'row', gap: spacing.sm },
