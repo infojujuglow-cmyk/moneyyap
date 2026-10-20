@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ConfirmActionDialog } from '@/components/ConfirmActionDialog';
 import { SmartSelectField, SmartSelectSheet } from '@/components/SmartSelectSheet';
 import { AppText, Button, Chip } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
+import { getErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing, typography } from '@/theme';
 import type { Category, CategoryType } from '@/types/finance';
 
@@ -13,7 +15,7 @@ const icons = ['pricetag-outline', 'restaurant-outline', 'home-outline', 'car-ou
 
 export default function CategoryDetailScreen() {
   const params = useLocalSearchParams<{ id: string; spaceId?: string; type?: string; parentId?: string }>();
-  const { categories, spaces, selectedSpaceId, addCategory, updateCategory, archiveCategory } = useFinance();
+  const { categories, spaces, selectedSpaceId, addCategory, updateCategory, archiveCategory, restoreCategory } = useFinance();
   const existing = categories.find((item) => item.id === params.id);
   const isNew = params.id === 'new';
   const initialType: CategoryType = params.type === 'income' ? 'income' : 'expense';
@@ -26,6 +28,7 @@ export default function CategoryDetailScreen() {
   const [color, setColor] = useState(existing?.color ?? colors.mintDark);
   const [parentPickerOpen, setParentPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selectedSpace = spaces.find((space) => space.id === spaceId);
 
@@ -60,11 +63,12 @@ export default function CategoryDetailScreen() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to save this category.'); }
     finally { setSaving(false); }
   };
-  const archive = () => existing && Alert.alert(`Archive ${existing.name}?`, 'It and its nested subcategories will be hidden from new entries. Existing transaction history stays intact.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Archive', style: 'destructive', onPress: async () => { await archiveCategory(existing.id); router.back(); } }]);
   const restore = async () => {
-    if (!existing) return;
-    await Promise.all([existing.id, ...descendantIds].map((id) => updateCategory(id, { isArchived: false })));
-    router.back();
+    if (!existing || saving) return;
+    setSaving(true); setError(null);
+    try { await restoreCategory(existing.id); router.back(); }
+    catch (reason) { setError(getErrorMessage(reason, 'Unable to restore this category.')); }
+    finally { setSaving(false); }
   };
 
   return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -78,10 +82,11 @@ export default function CategoryDetailScreen() {
       <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>Color</AppText><View style={styles.wrap}>{palette.map((item) => <Pressable accessibilityLabel={`Color ${item}`} key={item} onPress={() => setColor(item)} style={[styles.swatch, { backgroundColor: item }, color === item && styles.selected]} />)}</View></View>
       {error ? <AppText variant="caption" style={styles.error}>{error}</AppText> : null}
       <Button label={isNew ? 'Create category' : 'Save changes'} icon="checkmark" loading={saving} disabled={!name.trim() || !spaceId} onPress={save} />
-      {!isNew && existing?.isArchived && <Button label="Restore category tree" icon="refresh-outline" onPress={restore} />}
-      {!isNew && !existing?.isArchived && <Button label="Archive category tree" variant="danger" icon="archive-outline" onPress={archive} />}
+      {!isNew && existing?.isArchived && <Button label="Restore category tree" icon="refresh-outline" loading={saving} onPress={restore} />}
+      {!isNew && !existing?.isArchived && <Button label="Archive category tree" variant="danger" icon="archive-outline" onPress={() => setArchiveOpen(true)} />}
     </ScrollView>
     <SmartSelectSheet visible={parentPickerOpen} title="Choose a parent" options={[{ id: '__root__', label: 'Top level category', detail: `Directly under ${selectedSpace?.name ?? 'this Space'}` }, ...parents.map((item) => ({ id: item.id, label: categoryPath(item), color: item.color }))]} selectedIds={[parentId ?? '__root__']} onClose={() => setParentPickerOpen(false)} onSelect={(id) => setParentId(id === '__root__' ? null : id)} searchPlaceholder="Search categories" />
+    {existing && <ConfirmActionDialog visible={archiveOpen} title={`Archive ${existing.name}?`} message="It and its nested subcategories will be hidden from new entries. Existing transaction history stays intact." confirmLabel="Archive category tree" onClose={() => setArchiveOpen(false)} onConfirm={async () => { await archiveCategory(existing.id); router.back(); }} />}
   </KeyboardAvoidingView>;
 }
 

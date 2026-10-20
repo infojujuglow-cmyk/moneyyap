@@ -40,6 +40,7 @@ interface FinanceContextValue {
   addCategory: (category: Omit<Category, 'id' | 'isSystem'>) => Promise<string>;
   updateCategory: (id: string, changes: Partial<Category>) => Promise<void>;
   archiveCategory: (id: string) => Promise<void>;
+  restoreCategory: (id: string) => Promise<void>;
   addWorkspaceMember: (email: string) => Promise<void>;
 }
 
@@ -387,8 +388,9 @@ export function FinanceProvider({ children }: PropsWithChildren) {
         ['classificationReviewRequired', 'classification_review_required'],
       ];
       fields.forEach(([source, target]) => { if (changes[source] !== undefined) payload[target] = changes[source]; });
-      const { error } = await supabase.from('transactions').update(payload).eq('id', id);
+      const { data, error } = await supabase.from('transactions').update(payload).eq('id', id).select('id').maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Transaction could not be updated. Refresh and try again.');
       if (changes.tagIds) {
         const { error: deleteError } = await supabase.from('transaction_tags').delete().eq('transaction_id', id);
         if (deleteError) throw deleteError;
@@ -409,7 +411,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
   const deleteTransaction = useCallback(async (id: string) => {
     if (!supabase) throw new Error('MoneyYap is not connected to Supabase.');
     const deletedTransaction = transactions.find((item) => item.id === id);
-    { const { error } = await supabase.from('transactions').delete().eq('id', id); if (error) throw error; }
+    { const { data, error } = await supabase.from('transactions').delete().eq('id', id).select('id').maybeSingle(); if (error) throw error; if (!data) throw new Error('Transaction could not be deleted. Refresh and try again.'); }
     setTransactions((items) => items.filter((item) => item.id !== id));
     if (deletedTransaction) setAccounts((items) => applyTransactionToAccountBalances(items, deletedTransaction, -1));
     setLastAdded((item) => item?.id === id ? null : item);
@@ -429,7 +431,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
 
   const setAccountActive = useCallback(async (id: string, isActive: boolean) => {
     if (!supabase) throw new Error('MoneyYap is not connected to Supabase.');
-    { const { error } = await supabase.from('accounts').update({ is_active: isActive }).eq('id', id); if (error) throw error; }
+    { const { data, error } = await supabase.from('accounts').update({ is_active: isActive }).eq('id', id).select('id').maybeSingle(); if (error) throw error; if (!data) throw new Error('Account could not be updated. Refresh and try again.'); }
     setAccounts((items) => items.map((item) => item.id === id ? { ...item, isActive } : item));
   }, []);
 
@@ -466,7 +468,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
       if (changes.name !== undefined) payload.name = changes.name; if (changes.icon !== undefined) payload.icon = changes.icon;
       if (changes.color !== undefined) payload.color = changes.color; if (changes.sortOrder !== undefined) payload.sort_order = changes.sortOrder;
       if (changes.isArchived !== undefined) payload.is_archived = changes.isArchived;
-      const { error } = await supabase.from('spaces').update(payload).eq('id', id); if (error) throw error;
+      const { data, error } = await supabase.from('spaces').update(payload).eq('id', id).select('id').maybeSingle(); if (error) throw error; if (!data) throw new Error('Space could not be updated. Refresh and try again.');
     }
     setSpaces((items) => items.map((item) => item.id === id ? { ...item, ...changes } : item));
   }, []);
@@ -495,20 +497,26 @@ export function FinanceProvider({ children }: PropsWithChildren) {
       if (changes.color !== undefined) payload.color = changes.color; if (changes.spaceId !== undefined) payload.space_id = changes.spaceId;
       if (changes.parentId !== undefined) payload.parent_id = changes.parentId; if (changes.sortOrder !== undefined) payload.sort_order = changes.sortOrder;
       if (changes.isArchived !== undefined) payload.is_archived = changes.isArchived;
-      const { error } = await supabase.from('categories').update(payload).eq('id', id); if (error) throw error;
+      const { data, error } = await supabase.from('categories').update(payload).eq('id', id).select('id').maybeSingle(); if (error) throw error; if (!data) throw new Error('Category could not be updated. Refresh and try again.');
     }
     setCategories((items) => items.map((item) => item.id === id ? { ...item, ...changes } : item));
   }, []);
 
-  const archiveCategory = useCallback(async (id: string) => {
+  const setCategoryTreeArchived = useCallback(async (id: string, isArchived: boolean) => {
+    if (!supabase) throw new Error('MoneyYap is not connected to Supabase.');
     const ids = new Set([id]);
     let changed = true;
     while (changed) {
       changed = false;
       categories.forEach((item) => { if (item.parentId && ids.has(item.parentId) && !ids.has(item.id)) { ids.add(item.id); changed = true; } });
     }
-    await Promise.all([...ids].map((categoryId) => updateCategory(categoryId, { isArchived: true })));
-  }, [categories, updateCategory]);
+    const { data, error } = await supabase.from('categories').update({ is_archived: isArchived }).in('id', [...ids]).select('id');
+    if (error) throw error;
+    if (data?.length !== ids.size) throw new Error('Some categories could not be updated. Refresh and try again.');
+    setCategories((items) => items.map((item) => ids.has(item.id) ? { ...item, isArchived } : item));
+  }, [categories]);
+  const archiveCategory = useCallback((id: string) => setCategoryTreeArchived(id, true), [setCategoryTreeArchived]);
+  const restoreCategory = useCallback((id: string) => setCategoryTreeArchived(id, false), [setCategoryTreeArchived]);
 
   const addWorkspaceMember = useCallback(async (email: string) => {
     if (!supabase) throw new Error('MoneyYap is not connected to Supabase.');
@@ -523,8 +531,8 @@ export function FinanceProvider({ children }: PropsWithChildren) {
     isLoading, refreshFinance, lastAdded, parseMessage, sendChatMessage, loadLatestConversation, clearConversationClarification,
     parseTransactionImage, saveDraft, rememberOwnAccountMapping, updateTransaction, deleteTransaction,
     undoLastAdded: async () => { if (lastAdded) await deleteTransaction(lastAdded.id); }, addAccount, updateAccount, setAccountActive,
-    addSpace, updateSpace, archiveSpace, addCategory, updateCategory, archiveCategory, addWorkspaceMember,
-  }), [accounts, addAccount, addCategory, addSpace, addWorkspaceMember, archiveCategory, archiveSpace, availableWorkspaces, categories, clearConversationClarification, counterparties, createWorkspace, deleteTransaction, isLoading, lastAdded, loadLatestConversation, members, parseMessage, parseTransactionImage, refreshFinance, rememberOwnAccountMapping, saveDraft, selectedSpaceId, sendChatMessage, setAccountActive, spaces, switchWorkspace, tags, transactions, updateAccount, updateCategory, updateSpace, updateTransaction, workspaceId]);
+    addSpace, updateSpace, archiveSpace, addCategory, updateCategory, archiveCategory, restoreCategory, addWorkspaceMember,
+  }), [accounts, addAccount, addCategory, addSpace, addWorkspaceMember, archiveCategory, archiveSpace, availableWorkspaces, categories, clearConversationClarification, counterparties, createWorkspace, deleteTransaction, isLoading, lastAdded, loadLatestConversation, members, parseMessage, parseTransactionImage, refreshFinance, rememberOwnAccountMapping, restoreCategory, saveDraft, selectedSpaceId, sendChatMessage, setAccountActive, spaces, switchWorkspace, tags, transactions, updateAccount, updateCategory, updateSpace, updateTransaction, workspaceId]);
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 }

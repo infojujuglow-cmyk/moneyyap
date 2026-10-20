@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ConfirmActionDialog } from '@/components/ConfirmActionDialog';
 import { SmartSelectField, SmartSelectSheet, type SmartSelectOption } from '@/components/SmartSelectSheet';
 import { TransactionDateTimeField } from '@/components/TransactionDateTimeField';
 import { AppText, Button } from '@/components/ui';
@@ -105,6 +106,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const [picker, setPicker] = useState<Picker>(null);
   const [moreOpen, setMoreOpen] = useState(Boolean(initialDraft?.notes || initialDraft?.paymentRail && initialDraft.paymentRail !== 'unknown' || initialDraft?.tagIds?.length));
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const movesMoney = type === 'transfer' || type === 'credit_card_payment';
   const spaceAccounts = useMemo(() => activeAccounts.filter((account) => !account.spaceId || account.spaceId === spaceId), [activeAccounts, spaceId]);
@@ -225,13 +227,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
       setError(saveError instanceof Error ? saveError.message : 'Unable to save this transaction.');
     } finally { setSaving(false); }
   };
-  const remove = () => {
-    if (!editingTransaction) return;
-    Alert.alert('Delete this transaction?', 'It will be removed from your workspace history and analytics.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { await deleteTransaction(editingTransaction.id); router.back(); } },
-    ]);
-  };
+  const remove = () => setDeleteOpen(true);
 
   const labels = {
     description: type === 'income' ? 'Received from' : type === 'refund' ? 'Refunded from' : 'Merchant / description',
@@ -292,6 +288,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
         </SafeAreaView>
       </KeyboardAvoidingView>
       <SmartSelectSheet visible={picker !== null} title={sheetConfig.title} options={sheetConfig.options} selectedIds={sheetConfig.ids} searchPlaceholder={sheetConfig.placeholder} multiple={picker === 'tags'} onClose={() => setPicker(null)} onSelect={handleSheetSelect} />
+      {editingTransaction && <ConfirmActionDialog visible={deleteOpen} title="Delete this transaction?" message="It will be removed from your workspace history and analytics." confirmLabel="Delete transaction" onClose={() => setDeleteOpen(false)} onConfirm={async () => { await deleteTransaction(editingTransaction.id); router.back(); }} />}
     </View>
   );
 }

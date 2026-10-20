@@ -286,8 +286,13 @@ export default function AddScreen() {
   const undoAt = async (index: number) => {
     const transaction = saved[index];
     if (!transaction) return;
-    await deleteTransaction(transaction.id);
-    setSaved((items) => { const next = { ...items }; delete next[index]; return next; });
+    setError(null);
+    try {
+      await deleteTransaction(transaction.id);
+      setSaved((items) => { const next = { ...items }; delete next[index]; return next; });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to undo this transaction.');
+    }
   };
 
   const reset = () => {
