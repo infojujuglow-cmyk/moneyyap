@@ -249,6 +249,34 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
     } finally { setSaving(false); }
   };
   const remove = () => setDeleteOpen(true);
+  const duplicate = () => {
+    if (!editingTransaction || !valid) return;
+    const duplicateDraft: ParsedTransactionDraft = {
+      transactionType: type,
+      financialEffect: type === 'expense' ? 'expense' : type === 'income' || type === 'refund' ? 'income' : 'internal_transfer',
+      paymentRail,
+      amount: parsedAmount,
+      currency: editingTransaction.currency,
+      merchant: type === 'income' ? null : merchant.trim() || null,
+      counterpartyId,
+      counterpartyName: merchant.trim() || null,
+      counterpartyType: movesMoney ? 'own_account' : type === 'expense' || type === 'refund' ? 'merchant' : 'unknown',
+      ownershipStatus: movesMoney ? 'owned' : 'external',
+      spaceId,
+      categoryId: needsCategory ? effectiveCategoryId : null,
+      tagIds,
+      accountFromId: type === 'income' || type === 'refund' ? null : effectiveAccountId,
+      accountToId: type === 'income' || type === 'refund' ? effectiveAccountId : movesMoney ? effectiveDestinationId : null,
+      paidByUserId: editingTransaction.paidByUserId,
+      transactionDate: new Date().toISOString(),
+      notes: notes.trim() || null,
+      originalMessage: '',
+      confidence: 1,
+      needsConfirmation: false,
+      classificationReviewRequired: forVerification,
+    };
+    router.replace({ pathname: '/manual-transaction', params: { draft: JSON.stringify(duplicateDraft) } });
+  };
 
   const labels = {
     description: type === 'income' ? 'Received from' : type === 'refund' ? 'Refunded from' : 'Merchant / description',
@@ -320,7 +348,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
               {editingTransaction?.originalMessage && <View style={styles.original}><AppText variant="eyebrow" style={styles.muted}>Original message</AppText><AppText>“{editingTransaction.originalMessage}”</AppText></View>}
             </View>}
           </ScrollView>
-          <View style={styles.footer}>{error ? <AppText variant="caption" style={styles.error}>{error}</AppText> : null}<Button label={editingTransaction ? 'Save changes' : forVerification ? 'Save for verification' : 'Save transaction'} icon="checkmark" loading={saving} disabled={!valid} onPress={submit} /></View>
+          <View style={styles.footer}>{error ? <AppText variant="caption" style={styles.error}>{error}</AppText> : null}{editingTransaction && <Button label="Duplicate transaction" variant="secondary" icon="copy-outline" disabled={!valid || saving} onPress={duplicate} />}<Button label={editingTransaction ? 'Save changes' : forVerification ? 'Save for verification' : 'Save transaction'} icon="checkmark" loading={saving} disabled={!valid} onPress={submit} /></View>
         </SafeAreaView>
       </KeyboardAvoidingView>
       <SmartSelectSheet visible={picker !== null} title={sheetConfig.title} options={sheetConfig.options} selectedIds={sheetConfig.ids} searchPlaceholder={sheetConfig.placeholder} multiple={picker === 'tags'} hierarchical={picker === 'category'} onClose={() => setPicker(null)} onSelect={handleSheetSelect} />
