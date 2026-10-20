@@ -71,19 +71,21 @@ export function DesktopSidebar() {
         <View style={styles.accountGroups}>
           {accountGroups.map(({ key, name: institution, accounts: institutionAccounts }) => {
             const collapsed = collapsedInstitutions[key] ?? false;
-            return <View key={key}>
-              <Pressable accessibilityRole="button" accessibilityState={{ expanded: !collapsed }} onPress={() => setCollapsedInstitutions((current) => ({ ...current, [key]: !collapsed }))} style={({ hovered }) => [styles.institutionHeader, interactionTransition, hovered && styles.navHover]}>
+            return <View key={key} style={styles.institutionGroup}>
+              <Pressable accessibilityRole="button" accessibilityLabel={`${institution}, ${institutionAccounts.length} ${institutionAccounts.length === 1 ? 'account' : 'accounts'}`} accessibilityState={{ expanded: !collapsed }} onPress={() => setCollapsedInstitutions((current) => ({ ...current, [key]: !collapsed }))} style={({ hovered, pressed }) => [styles.institutionHeader, !collapsed && styles.institutionHeaderExpanded, interactionTransition, (hovered || pressed) && styles.institutionHeaderHover]}>
+                <View style={styles.institutionIcon}><Ionicons name={institution === 'Other accounts' ? 'wallet-outline' : 'business-outline'} size={13} color={colors.mintDeep} /></View>
                 <AppText variant="caption" style={styles.institutionName} numberOfLines={1}>{institution}</AppText>
+                <View style={styles.institutionCount}><AppText variant="caption" style={styles.institutionCountText}>{institutionAccounts.length}</AppText></View>
                 <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={colors.slate} />
               </Pressable>
-              {!collapsed && institutionAccounts.map((account) => {
+              {!collapsed && <View style={styles.institutionAccounts}>{institutionAccounts.map((account) => {
                 const selected = pathname === `/account/${account.id}`;
                 return <Pressable key={account.id} accessibilityRole="link" accessibilityState={{ selected }} onPress={() => router.push(`/account/${account.id}`)} style={({ hovered, pressed }) => [styles.accountItem, interactionTransition, selected && styles.accountSelected, (hovered || pressed) && !selected && styles.navHover]}>
                   {selected && <View style={styles.activeIndicator} />}
                   <View style={[styles.accountIcon, { backgroundColor: `${account.accent}14` }]}><Ionicons name={accountIcon(account)} size={14} color={account.accent} /></View>
                   <View style={styles.accountCopy}><AppText variant="caption" numberOfLines={1} style={[styles.accountName, selected && styles.selectedText]}>{account.name}</AppText><AppText variant="caption" numberOfLines={1} style={styles.accountBalance}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText></View>
                 </Pressable>;
-              })}
+              })}</View>}
             </View>;
           })}
           <View style={styles.accountDivider} />
@@ -123,9 +125,16 @@ const styles = StyleSheet.create({
   accountsLabel: { color: colors.slate, fontSize: 10, lineHeight: 14, letterSpacing: 1, paddingLeft: spacing.sm },
   accountsHeading: { minHeight: 26, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   addAccount: { width: 26, height: 26, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center', marginTop: -7, marginRight: 2 },
-  accountGroups: { gap: 2 },
-  institutionHeader: { minHeight: 28, paddingHorizontal: spacing.sm, borderRadius: radii.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  institutionName: { flex: 1, color: colors.slate, fontSize: 11 },
+  accountGroups: { gap: spacing.sm },
+  institutionGroup: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radii.sm, overflow: 'hidden' },
+  institutionHeader: { minHeight: 36, paddingHorizontal: spacing.sm, backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  institutionHeaderExpanded: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  institutionHeaderHover: { backgroundColor: colors.mintWash },
+  institutionIcon: { width: 21, height: 21, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.mintWash },
+  institutionName: { flex: 1, minWidth: 0, color: colors.slateDark, fontFamily: typography.semibold, fontSize: 11.5, lineHeight: 16 },
+  institutionCount: { minWidth: 20, height: 19, paddingHorizontal: 5, borderRadius: radii.pill, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center' },
+  institutionCountText: { color: colors.slate, fontFamily: typography.semibold, fontSize: 10, lineHeight: 14 },
+  institutionAccounts: { paddingHorizontal: 3, paddingVertical: 3 },
   accountItem: { minHeight: 42, paddingHorizontal: spacing.sm, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, position: 'relative', overflow: 'hidden' },
   accountSelected: { backgroundColor: colors.mintWash },
   accountIcon: { width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
