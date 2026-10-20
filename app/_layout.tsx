@@ -5,8 +5,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Platform, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { DesktopQuickActions } from '@/components/DesktopQuickActions';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
-import { DesktopTalkButton } from '@/components/DesktopTalkButton';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { FinanceProvider, useFinance } from '@/context/FinanceContext';
 import { colors } from '@/theme';
@@ -63,7 +63,7 @@ function AppNavigator() {
       <Stack.Screen name="space/[id]" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="category/[id]" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
     </Stack>
-    {desktop && <DesktopTalkButton />}
+    {desktop && <DesktopQuickActions />}
     </View>
   </View>;
 }
