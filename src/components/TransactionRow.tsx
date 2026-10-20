@@ -47,7 +47,6 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
   if (desktop) return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${meta.label}: ${title}${transaction.classificationReviewRequired ? ', for verification' : ''}`} onPress={onPress} style={({ pressed }) => [styles.row, styles.desktopRow, transaction.classificationReviewRequired && styles.verificationRow, pressed && styles.pressed]}>
       {direction !== 'neutral' && <View style={[styles.directionIndicator, transaction.classificationReviewRequired && styles.verificationIndicator, { backgroundColor: directionColor }]} />}
-      <AppText variant="caption" style={styles.dateCell}>{new Date(transaction.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</AppText>
       <View style={styles.typeCell}><IconCircle name={meta.icon} color={directionColor} background={directionBackground} size={36} /></View>
       <View style={styles.accountCell}><AppText variant="caption" numberOfLines={1}>{account?.name ?? '—'}</AppText>{account?.institution && <AppText variant="caption" style={styles.cellMeta} numberOfLines={1}>{account.institution}</AppText>}</View>
       <View style={styles.receiverCell}><AppText variant="caption" numberOfLines={1}>{receiver}</AppText><AppText variant="caption" style={[styles.cellMeta, transaction.classificationReviewRequired && styles.verificationText]} numberOfLines={1}>{transaction.classificationReviewRequired ? 'For verification' : meta.label}</AppText></View>
@@ -86,7 +85,6 @@ const styles = StyleSheet.create({
   categoryCell: { width: '14%', minWidth: 100, color: colors.slateDark },
   notesCell: { width: '15%', minWidth: 110, color: colors.slate },
   cellMeta: { color: colors.slate, fontSize: 10 },
-  dateCell: { width: 100, color: colors.slateDark },
   amountWrap: { alignItems: 'flex-end', gap: 2, minWidth: 92 },
   directionIndicator: { position: 'absolute', left: -spacing.lg, width: 3, height: 32, borderRadius: 3 },
   verificationIndicator: { left: 0 },
