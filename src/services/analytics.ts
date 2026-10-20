@@ -1,4 +1,4 @@
-import type { Account, Category, CategoryType, MonthlyPoint, Transaction } from '@/types/finance';
+import type { Account, Category, CategoryType, MonthlyPoint, Space, Transaction } from '@/types/finance';
 
 export const isSpend = (transaction: Transaction) => transaction.financialEffect === 'expense';
 export const isRefund = (transaction: Transaction) => transaction.type === 'refund';
@@ -252,6 +252,14 @@ export interface CategoryReportItem {
   transactionIds: string[];
 }
 
+export interface SpaceReportItem {
+  id: string;
+  name: string;
+  color: string;
+  amount: number;
+  transactionIds: string[];
+}
+
 const categoryTransactionAmount = (transaction: Transaction, type: CategoryType) =>
   type === 'income' ? isIncome(transaction) ? transaction.amount : 0 : expenseContribution(transaction);
 
@@ -301,6 +309,34 @@ export const categoryReportBreakdown = (
     if (amount > 0) rows.push({ id: `__direct__:${parentId}`, name: 'Directly categorized', color: categoryMap.get(parentId)?.color ?? '#9AA3AD', amount, parentId, hasChildren: false, transactionIds: direct.map((transaction) => transaction.id) });
   }
   return rows.sort((left, right) => right.amount - left.amount || left.name.localeCompare(right.name));
+};
+
+export const spaceReportBreakdown = (
+  transactions: Transaction[],
+  spaces: Space[],
+  type: CategoryType,
+): SpaceReportItem[] => {
+  const spaceMap = new Map(spaces.map((space) => [space.id, space]));
+  const grouped = new Map<string, SpaceReportItem>();
+  transactions.forEach((transaction) => {
+    const amount = categoryTransactionAmount(transaction, type);
+    if (amount === 0) return;
+    const id = transaction.spaceId || '__unassigned__';
+    const space = transaction.spaceId ? spaceMap.get(transaction.spaceId) : undefined;
+    const current = grouped.get(id) ?? {
+      id,
+      name: space?.name ?? 'Unassigned Space',
+      color: space?.color ?? '#9AA3AD',
+      amount: 0,
+      transactionIds: [],
+    };
+    current.amount += amount;
+    current.transactionIds.push(transaction.id);
+    grouped.set(id, current);
+  });
+  return [...grouped.values()]
+    .filter((item) => item.amount > 0)
+    .sort((left, right) => right.amount - left.amount || left.name.localeCompare(right.name));
 };
 
 export interface PayeeReportItem {

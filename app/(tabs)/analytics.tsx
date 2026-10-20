@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, useColorScheme, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,44 +10,31 @@ import { SmartSelectSheet } from '@/components/SmartSelectSheet';
 import { SpaceSelector } from '@/components/SpaceSelector';
 import { AppText, Button, Chip } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
+import { isReportKey, reportItems, reportLabel, type ReportKey } from '@/lib/reports';
 import {
   accountBalancesAsOf,
   analyticsTotals,
   categoryReportBreakdown,
   payeeBreakdownForTransactions,
   resolveAnalyticsDateRange,
+  spaceReportBreakdown,
   spendingTrendSeries,
   transactionsInRange,
   transactionsInSpace,
   type AnalyticsCustomRange,
   type AnalyticsRangeKey,
   type CategoryReportItem,
+  type SpaceReportItem,
 } from '@/services/analytics';
 import { colors, formatCompactPeso, formatPeso, radii, spacing } from '@/theme';
-import type { Account, CategoryType, Transaction } from '@/types/finance';
+import type { Account, CategoryType, Space, Transaction } from '@/types/finance';
 
-type ReportKey = 'overview' | 'expenses' | 'income' | 'cash_flow' | 'balances' | 'trends' | 'budget' | 'payees' | 'net_worth';
 type Palette = { background: string; card: string; elevated: string; border: string; text: string; muted: string };
-
-const PRIMARY_REPORTS: { key: ReportKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: 'overview', label: 'Overview', icon: 'sparkles-outline' },
-  { key: 'expenses', label: 'Expenses by Category', icon: 'pie-chart-outline' },
-  { key: 'income', label: 'Income by Category', icon: 'trending-up-outline' },
-  { key: 'cash_flow', label: 'Cash Flow', icon: 'pulse-outline' },
-  { key: 'balances', label: 'Account Balances', icon: 'wallet-outline' },
-  { key: 'trends', label: 'Spending Trends', icon: 'analytics-outline' },
-  { key: 'budget', label: 'Budget vs Actual', icon: 'speedometer-outline' },
-];
-const MORE_REPORTS = [
-  { key: 'payees' as const, label: 'Payee Breakdown', icon: 'people-outline' as const },
-  { key: 'net_worth' as const, label: 'Net Worth', icon: 'diamond-outline' as const },
-];
 
 const paletteFor = (dark: boolean): Palette => dark
   ? { background: '#11151B', card: '#191F27', elevated: '#222A34', border: '#303946', text: '#F5F7F8', muted: '#A6AFBA' }
   : { background: '#F5F7F5', card: '#FFFFFF', elevated: '#F2F5F2', border: '#E2E7E3', text: colors.ink, muted: colors.slate };
 
-const reportLabel = (key: ReportKey) => [...PRIMARY_REPORTS, ...MORE_REPORTS].find((item) => item.key === key)?.label ?? 'Reports';
 const accountLabel = (account: Account) => account.institution ? `${account.name} · ${account.institution}` : account.name;
 
 function MetricCard({ label, amount, tone, icon, palette }: { label: string; amount: number; tone: 'income' | 'expense' | 'neutral'; icon: keyof typeof Ionicons.glyphMap; palette: Palette }) {
@@ -96,28 +83,40 @@ function CategoryReport({ type, transactions, categories, spaceId, palette }: { 
   </View>;
 }
 
+function SpaceReport({ type, transactions, spaces, palette }: { type: CategoryType; transactions: Transaction[]; spaces: Space[]; palette: Palette }) {
+  const [selected, setSelected] = useState<SpaceReportItem | null>(null);
+  const rows = useMemo(() => spaceReportBreakdown(transactions, spaces, type), [spaces, transactions, type]);
+  const total = rows.reduce((sum, row) => sum + row.amount, 0);
+  const selectedIndex = selected ? rows.findIndex((row) => row.id === selected.id) : null;
+  const transactionById = useMemo(() => new Map(transactions.map((transaction) => [transaction.id, transaction])), [transactions]);
+  const selectedTransactions = selected?.transactionIds.map((id) => transactionById.get(id)).filter(Boolean) as Transaction[] | undefined;
+  if (!rows.length) return <ReportCard palette={palette}><ReportEmpty icon="grid-outline" title={`No ${type} activity by Space`} body={`No ${type} transactions match the current filters.`} palette={palette} /></ReportCard>;
+  return <View style={styles.reportStack}>
+    <ReportCard palette={palette} style={styles.donutCard}>
+      <View style={styles.donutArea}><DonutChart size={220} segments={rows.map((row) => ({ amount: row.amount, color: row.color }))} selectedIndex={selectedIndex !== null && selectedIndex >= 0 ? selectedIndex : null} onSegmentPress={(index) => setSelected(rows[index] ?? null)} /><View pointerEvents="none" style={styles.donutCenter}><AppText variant="eyebrow" style={{ color: palette.muted }}>TOTAL {type.toUpperCase()}</AppText><AppText variant="h2" style={{ color: type === 'income' ? colors.income : colors.expense }}>{formatCompactPeso(total)}</AppText></View></View>
+      <View style={styles.breakdown}><AppText variant="h3" style={{ color: palette.text }}>By Space</AppText>{rows.map((row) => <Pressable key={row.id} accessibilityRole="button" onPress={() => setSelected(row)} style={({ pressed }) => [styles.breakdownRow, selected?.id === row.id && { backgroundColor: palette.elevated }, pressed && styles.pressed]}><View style={[styles.spaceMark, { backgroundColor: `${row.color}1F` }]}><Ionicons name="layers-outline" size={18} color={row.color} /></View><View style={styles.breakdownName}><AppText variant="bodyMedium" style={{ color: palette.text }}>{row.name}</AppText><AppText variant="caption" style={{ color: palette.muted }}>{row.transactionIds.length} {row.transactionIds.length === 1 ? 'transaction' : 'transactions'} · {Math.round(row.amount / Math.max(total, 1) * 100)}%</AppText></View><AppText variant="bodyMedium" style={{ color: type === 'income' ? colors.income : colors.expense }}>{formatPeso(row.amount)}</AppText><Ionicons name="chevron-forward" size={17} color={palette.muted} /></Pressable>)}</View>
+    </ReportCard>
+    {selected && selectedTransactions?.length ? <Drilldown title={selected.name} transactions={selectedTransactions} palette={palette} onClose={() => setSelected(null)} /> : null}
+  </View>;
+}
+
 function AccountRows({ accounts, palette, onSelect }: { accounts: (Account & { balanceAsOf: number })[]; palette: Palette; onSelect?: (account: Account) => void }) {
   const max = Math.max(...accounts.map((account) => Math.abs(account.balanceAsOf)), 1);
   return <View>{accounts.map((account, index) => <Pressable key={account.id} onPress={() => onSelect?.(account)} disabled={!onSelect} style={({ pressed }) => [styles.accountRow, index > 0 && { borderTopColor: palette.border, borderTopWidth: 1 }, pressed && styles.pressed]}><View style={[styles.accountMark, { backgroundColor: `${account.accent}1F` }]}><Ionicons name={account.type === 'credit_card' ? 'card-outline' : account.type === 'cash' ? 'cash-outline' : 'business-outline'} size={19} color={account.accent} /></View><View style={styles.accountCopy}><AppText variant="bodyMedium" style={{ color: palette.text }}>{account.name}</AppText><AppText variant="caption" style={{ color: palette.muted }}>{account.institution || account.type.replaceAll('_', ' ')}</AppText><View style={[styles.balanceTrack, { backgroundColor: palette.elevated }]}><View style={[styles.balanceFill, { width: `${Math.max(3, Math.abs(account.balanceAsOf) / max * 100)}%`, backgroundColor: account.accent }]} /></View></View><AppText variant="bodyMedium" style={{ color: account.balanceAsOf < 0 ? colors.expense : palette.background === '#11151B' ? palette.text : colors.neutralAmount }}>{formatPeso(account.balanceAsOf)}</AppText>{onSelect && <Ionicons name="chevron-forward" size={17} color={palette.muted} />}</Pressable>)}</View>;
 }
 
-function ReportNavigation({ selected, onSelect, palette }: { selected: ReportKey; onSelect: (key: ReportKey) => void; palette: Palette }) {
-  const [moreOpen, setMoreOpen] = useState(false);
-  const row = (item: (typeof PRIMARY_REPORTS)[number]) => <Pressable key={item.key} onPress={() => onSelect(item.key)} style={({ pressed }) => [styles.navRow, selected === item.key && styles.navRowSelected, pressed && styles.pressed]}><Ionicons name={item.icon} size={19} color={selected === item.key ? colors.mintDeep : palette.muted} /><AppText variant="bodyMedium" style={[styles.navLabel, { color: selected === item.key ? colors.mintDeep : palette.text }]}>{item.label}</AppText></Pressable>;
-  return <View style={[styles.reportNav, { backgroundColor: palette.card, borderColor: palette.border }]}><AppText variant="eyebrow" style={[styles.navCaption, { color: palette.muted }]}>REPORTS</AppText>{PRIMARY_REPORTS.map(row)}<View style={[styles.navDivider, { backgroundColor: palette.border }]} /><Pressable onPress={() => setMoreOpen((value) => !value)} style={styles.navRow}><Ionicons name="ellipsis-horizontal-circle-outline" size={19} color={palette.muted} /><AppText variant="bodyMedium" style={[styles.navLabel, { color: palette.text }]}>More Reports</AppText><Ionicons name={moreOpen ? 'chevron-up' : 'chevron-down'} size={17} color={palette.muted} /></Pressable>{moreOpen && MORE_REPORTS.map(row)}</View>;
-}
-
 function MobileReportPicker({ visible, selected, onSelect, onClose, palette }: { visible: boolean; selected: ReportKey; onSelect: (key: ReportKey) => void; onClose: () => void; palette: Palette }) {
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalOverlay}><Pressable style={StyleSheet.absoluteFill} onPress={onClose} /><SafeAreaView edges={['bottom']} style={[styles.mobileSheet, { backgroundColor: palette.card }]}><View style={[styles.sheetHandle, { backgroundColor: palette.border }]} /><View style={styles.sheetHeading}><AppText variant="h3" style={{ color: palette.text }}>Choose a report</AppText><Pressable onPress={onClose}><Ionicons name="close" size={23} color={palette.text} /></Pressable></View><ScrollView>{[...PRIMARY_REPORTS, ...MORE_REPORTS].map((item) => <Pressable key={item.key} onPress={() => { onSelect(item.key); onClose(); }} style={[styles.mobileReportRow, selected === item.key && { backgroundColor: palette.elevated }]}><Ionicons name={item.icon} size={21} color={selected === item.key ? colors.mintDeep : palette.muted} /><AppText variant="bodyMedium" style={[styles.navLabel, { color: palette.text }]}>{item.label}</AppText>{selected === item.key && <Ionicons name="checkmark-circle" size={20} color={colors.mintDeep} />}</Pressable>)}</ScrollView></SafeAreaView></View></Modal>;
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.modalOverlay}><Pressable style={StyleSheet.absoluteFill} onPress={onClose} /><SafeAreaView edges={['bottom']} style={[styles.mobileSheet, { backgroundColor: palette.card }]}><View style={[styles.sheetHandle, { backgroundColor: palette.border }]} /><View style={styles.sheetHeading}><AppText variant="h3" style={{ color: palette.text }}>Choose a report</AppText><Pressable onPress={onClose}><Ionicons name="close" size={23} color={palette.text} /></Pressable></View><ScrollView>{reportItems.map((item) => <Pressable key={item.key} onPress={() => { onSelect(item.key); onClose(); }} style={[styles.mobileReportRow, selected === item.key && { backgroundColor: palette.elevated }]}><Ionicons name={item.icon} size={21} color={selected === item.key ? colors.mintDeep : palette.muted} /><AppText variant="bodyMedium" style={[styles.navLabel, { color: palette.text }]}>{item.label}</AppText>{selected === item.key && <Ionicons name="checkmark-circle" size={20} color={colors.mintDeep} />}</Pressable>)}</ScrollView></SafeAreaView></View></Modal>;
 }
 
 export default function ReportsScreen() {
+  const params = useLocalSearchParams<{ report?: string }>();
   const { width } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 1024;
   const dark = useColorScheme() === 'dark';
   const palette = paletteFor(dark);
-  const { transactions, categories, accounts, selectedSpaceId, isLoading } = useFinance();
-  const [report, setReport] = useState<ReportKey>('overview');
+  const { transactions, categories, accounts, spaces, selectedSpaceId, isLoading } = useFinance();
+  const report: ReportKey = isReportKey(params.report) ? params.report : 'overview';
   const [rangeKey, setRangeKey] = useState<AnalyticsRangeKey>('this_month');
   const [customRange, setCustomRange] = useState<AnalyticsCustomRange | null>(null);
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -141,9 +140,12 @@ export default function ReportsScreen() {
   const payees = useMemo(() => payeeBreakdownForTransactions(periodTransactions), [periodTransactions]);
   const payeeTransactions = payeeSelection ? periodTransactions.filter((transaction) => payees.find((item) => item.id === payeeSelection)?.transactionIds.includes(transaction.id)) : [];
   const netWorth = balanceRows.reduce((sum, account) => sum + (account.type === 'credit_card' ? -Math.abs(account.balanceAsOf) : account.balanceAsOf), 0);
-  const chartWidth = Math.max(250, Math.min(desktop ? 760 : width - spacing.xl * 4, desktop ? width - 610 : width - spacing.xl * 4));
+  const chartWidth = Math.max(250, Math.min(desktop ? 1080 : width - spacing.xl * 4, desktop ? width - 400 : width - spacing.xl * 4));
   const selectedAccount = accounts.find((account) => account.id === accountId);
 
+  const selectReport = (key: ReportKey) => {
+    router.setParams({ report: key });
+  };
   const chooseRange = (key: AnalyticsRangeKey, nextCustom?: AnalyticsCustomRange) => { if (key === 'custom' && nextCustom) setCustomRange(nextCustom); setRangeKey(key); setRangeOpen(false); };
   const exportCsv = () => {
     if (Platform.OS !== 'web' || !periodTransactions.length) return;
@@ -163,7 +165,8 @@ export default function ReportsScreen() {
   const renderReport = () => {
     if (isLoading) return <ReportCard palette={palette}><View style={styles.loading}><ActivityIndicator color={colors.mintDark} /><AppText style={{ color: palette.muted }}>Loading your reports…</AppText></View></ReportCard>;
     if (report === 'expenses' || report === 'income') return <View style={styles.reportStack}>{commonHeader}<CategoryReport type={report === 'income' ? 'income' : 'expense'} transactions={periodTransactions} categories={categories} spaceId={selectedSpaceId} palette={palette} /></View>;
-    if (report === 'overview') return <View style={styles.reportStack}>{commonHeader}<View style={styles.metrics}><MetricCard label="INCOME" amount={totals.income} tone="income" icon="arrow-down" palette={palette} /><MetricCard label="EXPENSES" amount={totals.spending} tone="expense" icon="arrow-up" palette={palette} /><MetricCard label="NET CASH FLOW" amount={totals.netCashFlow} tone={totals.netCashFlow >= 0 ? 'income' : 'expense'} icon="swap-vertical" palette={palette} /><MetricCard label="NET WORTH" amount={netWorth} tone="neutral" icon="diamond-outline" palette={palette} /></View><ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>MONEY IN VS MONEY OUT</AppText><AppText variant="h3" style={{ color: palette.text }}>Cash flow</AppText></View><View style={styles.legendInline}><View style={[styles.colorDot, { backgroundColor: colors.income }]} /><AppText variant="caption" style={{ color: palette.muted }}>Income</AppText><View style={[styles.colorDot, { backgroundColor: colors.expense }]} /><AppText variant="caption" style={{ color: palette.muted }}>Expenses</AppText></View></View>{totals.income || totals.spending ? <CashFlowChart data={series} width={chartWidth} height={220} /> : <ReportEmpty icon="pulse-outline" title="No cash flow yet" body="Transactions in this period will appear here." palette={palette} />}</ReportCard><ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>AS OF {range.rangeLabel.toUpperCase()}</AppText><AppText variant="h3" style={{ color: palette.text }}>Account snapshot</AppText></View><Pressable onPress={() => setReport('balances')}><AppText variant="bodyMedium" style={{ color: colors.mintDeep }}>View all</AppText></Pressable></View>{balanceRows.length ? <AccountRows accounts={balanceRows.slice(0, 5)} palette={palette} onSelect={(account) => router.push(`/account/${account.id}`)} /> : <ReportEmpty icon="wallet-outline" title="No accounts" body="Add an account to see balances here." palette={palette} />}</ReportCard></View>;
+    if (report === 'expenses_by_space' || report === 'income_by_space') return <View style={styles.reportStack}>{commonHeader}<SpaceReport key={report} type={report === 'income_by_space' ? 'income' : 'expense'} transactions={periodTransactions} spaces={spaces} palette={palette} /></View>;
+    if (report === 'overview') return <View style={styles.reportStack}>{commonHeader}<View style={styles.metrics}><MetricCard label="INCOME" amount={totals.income} tone="income" icon="arrow-down" palette={palette} /><MetricCard label="EXPENSES" amount={totals.spending} tone="expense" icon="arrow-up" palette={palette} /><MetricCard label="NET CASH FLOW" amount={totals.netCashFlow} tone={totals.netCashFlow >= 0 ? 'income' : 'expense'} icon="swap-vertical" palette={palette} /><MetricCard label="NET WORTH" amount={netWorth} tone="neutral" icon="diamond-outline" palette={palette} /></View><ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>MONEY IN VS MONEY OUT</AppText><AppText variant="h3" style={{ color: palette.text }}>Cash flow</AppText></View><View style={styles.legendInline}><View style={[styles.colorDot, { backgroundColor: colors.income }]} /><AppText variant="caption" style={{ color: palette.muted }}>Income</AppText><View style={[styles.colorDot, { backgroundColor: colors.expense }]} /><AppText variant="caption" style={{ color: palette.muted }}>Expenses</AppText></View></View>{totals.income || totals.spending ? <CashFlowChart data={series} width={chartWidth} height={220} /> : <ReportEmpty icon="pulse-outline" title="No cash flow yet" body="Transactions in this period will appear here." palette={palette} />}</ReportCard><ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>AS OF {range.rangeLabel.toUpperCase()}</AppText><AppText variant="h3" style={{ color: palette.text }}>Account snapshot</AppText></View><Pressable onPress={() => selectReport('balances')}><AppText variant="bodyMedium" style={{ color: colors.mintDeep }}>View all</AppText></Pressable></View>{balanceRows.length ? <AccountRows accounts={balanceRows.slice(0, 5)} palette={palette} onSelect={(account) => router.push(`/account/${account.id}`)} /> : <ReportEmpty icon="wallet-outline" title="No accounts" body="Add an account to see balances here." palette={palette} />}</ReportCard></View>;
     if (report === 'cash_flow') return <View style={styles.reportStack}>{commonHeader}<View style={styles.metricsThree}><MetricCard label="INCOME" amount={totals.income} tone="income" icon="arrow-down" palette={palette} /><MetricCard label="EXPENSES" amount={totals.spending} tone="expense" icon="arrow-up" palette={palette} /><MetricCard label="NET" amount={totals.netCashFlow} tone={totals.netCashFlow >= 0 ? 'income' : 'expense'} icon="swap-vertical" palette={palette} /></View><ReportCard palette={palette}><View style={styles.legendInline}><View style={[styles.colorDot, { backgroundColor: colors.income }]} /><AppText variant="caption" style={{ color: palette.muted }}>Income</AppText><View style={[styles.colorDot, { backgroundColor: colors.expense }]} /><AppText variant="caption" style={{ color: palette.muted }}>Expenses</AppText></View>{totals.income || totals.spending ? <CashFlowChart data={series} width={chartWidth} height={270} /> : <ReportEmpty icon="pulse-outline" title="No cash flow data" body="Try another date range or add a transaction." palette={palette} />}</ReportCard></View>;
     if (report === 'balances') return <View style={styles.reportStack}>{commonHeader}<ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>BALANCE AT END OF PERIOD</AppText><AppText variant="h3" style={{ color: palette.text }}>{formatPeso(balanceRows.reduce((sum, account) => sum + account.balanceAsOf, 0))}</AppText></View></View>{balanceRows.length ? <AccountRows accounts={balanceRows} palette={palette} onSelect={(account) => router.push(`/account/${account.id}`)} /> : <ReportEmpty icon="wallet-outline" title="No account balances" body="No accounts match the current Space." palette={palette} />}</ReportCard></View>;
     if (report === 'trends') return <View style={styles.reportStack}>{commonHeader}<ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>HISTORICAL SPENDING</AppText><AppText variant="h2" style={{ color: totals.spending ? colors.expense : colors.neutralAmount }}>{formatPeso(totals.spending)}</AppText></View>{totals.spendingChange !== null && <View style={[styles.changePill, { backgroundColor: totals.spendingChange <= 0 ? colors.incomeWash : colors.expenseWash }]}><Ionicons name={totals.spendingChange <= 0 ? 'trending-down' : 'trending-up'} size={16} color={totals.spendingChange <= 0 ? colors.income : colors.expense} /><AppText variant="caption" style={{ color: totals.spendingChange <= 0 ? colors.income : colors.expense }}>{Math.abs(totals.spendingChange).toFixed(0)}% {range.comparisonLabel}</AppText></View>}</View>{totals.spending ? <SpendLineChart data={series} width={chartWidth} height={270} /> : <ReportEmpty icon="analytics-outline" title="No spending trend" body="There are no expenses in this period." palette={palette} />}</ReportCard></View>;
@@ -174,10 +177,10 @@ export default function ReportsScreen() {
 
   return <Screen title="Reports" subtitle="A clear view of where your money goes" contentStyle={[styles.wideContent, { backgroundColor: palette.background }]} backgroundColor={palette.background} titleColor={palette.text} subtitleColor={palette.muted} right={!desktop ? <Pressable onPress={() => setReportPickerOpen(true)} style={[styles.mobilePickerButton, { backgroundColor: palette.card, borderColor: palette.border }]}><Ionicons name="pie-chart-outline" size={18} color={colors.mintDeep} /><AppText variant="caption" style={{ color: palette.text }} numberOfLines={1}>{reportLabel(report)}</AppText><Ionicons name="chevron-down" size={16} color={palette.muted} /></Pressable> : undefined}>
     <View style={styles.filterBar}><SpaceSelector /><View style={styles.filterActions}><Chip label={`${range.label} · ${range.rangeLabel}`} icon="calendar-outline" selected onPress={() => setRangeOpen(true)} /><Chip label={selectedAccount?.name ?? 'All accounts'} icon="wallet-outline" selected={Boolean(accountId)} onPress={() => setAccountFilterOpen(true)} /></View></View>
-    <View style={desktop ? styles.desktopLayout : styles.mobileLayout}>{desktop && <ReportNavigation selected={report} onSelect={setReport} palette={palette} />}<View style={styles.reportMain}>{renderReport()}</View></View>
+    <View style={styles.reportMain}>{renderReport()}</View>
     <AnalyticsRangeSheet visible={rangeOpen} selectedKey={rangeKey} customRange={customRange} onClose={() => setRangeOpen(false)} onSelect={chooseRange} />
     <SmartSelectSheet visible={accountFilterOpen} title="Filter by account" options={[{ id: '__all__', label: 'All accounts', color: colors.mint }, ...relevantAccounts.map((account) => ({ id: account.id, label: account.name, detail: account.institution ?? account.type.replaceAll('_', ' '), searchText: accountLabel(account), color: account.accent }))]} selectedIds={[accountId ?? '__all__']} onClose={() => setAccountFilterOpen(false)} onSelect={(id) => setAccountId(id === '__all__' ? null : id)} searchPlaceholder="Search accounts" />
-    <MobileReportPicker visible={reportPickerOpen} selected={report} onSelect={setReport} onClose={() => setReportPickerOpen(false)} palette={palette} />
+    <MobileReportPicker visible={reportPickerOpen} selected={report} onSelect={selectReport} onClose={() => setReportPickerOpen(false)} palette={palette} />
   </Screen>;
 }
 
@@ -185,14 +188,7 @@ const styles = StyleSheet.create({
   wideContent: { maxWidth: 1440, minHeight: '100%' },
   filterBar: { gap: spacing.md },
   filterActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  desktopLayout: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xxl },
-  mobileLayout: { gap: spacing.xl },
-  reportNav: { width: 248, borderWidth: 1, borderRadius: radii.lg, padding: spacing.md, position: 'sticky', top: spacing.xl } as never,
-  navCaption: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  navRow: { minHeight: 46, borderRadius: radii.md, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  navRowSelected: { backgroundColor: colors.mintWash },
   navLabel: { flex: 1 },
-  navDivider: { height: 1, marginVertical: spacing.sm },
   reportMain: { flex: 1, minWidth: 0 },
   reportStack: { gap: spacing.xl },
   reportHeader: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
@@ -211,6 +207,7 @@ const styles = StyleSheet.create({
   breakdownRow: { minHeight: 58, borderRadius: radii.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md },
   breakdownName: { flex: 1, minWidth: 0 },
   colorDot: { width: 10, height: 10, borderRadius: 5 },
+  spaceMark: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   childRow: { minHeight: 42, marginLeft: spacing.xxxl, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   childGuide: { width: 3, height: 22, borderRadius: 2 },
   divider: { height: 1 },

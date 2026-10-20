@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, usePathname } from 'expo-router';
+import { router, useLocalSearchParams, usePathname } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, type ViewStyle, View } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useFinance } from '@/context/FinanceContext';
+import { isReportKey, moreReportItems, primaryReportItems, type ReportKey } from '@/lib/reports';
 import { amountColor, colors, formatPeso, radii, spacing, typography } from '@/theme';
 import type { Account } from '@/types/finance';
 import { AppText, Avatar, Wordmark } from './ui';
@@ -12,7 +13,6 @@ const mainItems = [
   { label: 'Overview', path: '/(tabs)', icon: 'grid-outline' },
   { label: 'Transactions', path: '/(tabs)/transactions', icon: 'receipt-outline' },
   { label: 'Talk to MoneyYap', path: '/(tabs)/add', icon: 'chatbubble-ellipses-outline' },
-  { label: 'Reports', path: '/(tabs)/analytics', icon: 'pie-chart-outline' },
 ] as const;
 
 const manageItems = [
@@ -25,7 +25,14 @@ const interactionTransition = { transitionDuration: '140ms', transitionProperty:
 
 export function DesktopSidebar() {
   const pathname = usePathname();
+  const params = useLocalSearchParams<{ report?: string }>();
   const [collapsedInstitutions, setCollapsedInstitutions] = useState<Record<string, boolean>>({});
+  const reportsSelected = pathname === '/analytics' || pathname === '/(tabs)/analytics';
+  const activeReport: ReportKey = isReportKey(params.report) ? params.report : 'overview';
+  const [reportsExpanded, setReportsExpanded] = useState(reportsSelected);
+  const [moreReportsExpanded, setMoreReportsExpanded] = useState(moreReportItems.some((item) => item.key === activeReport));
+  const activeMoreReport = moreReportItems.some((item) => item.key === activeReport);
+  const showMoreReports = moreReportsExpanded || (reportsSelected && activeMoreReport);
   const { session } = useAuth();
   const { accounts, availableWorkspaces, workspaceId } = useFinance();
   const workspace = availableWorkspaces.find((item) => item.id === workspaceId);
@@ -34,6 +41,8 @@ export function DesktopSidebar() {
     ? session.user.user_metadata.full_name.trim()
     : session?.user.email?.split('@')[0] ?? 'You';
   const initials = name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+
+  const selectReport = (report: ReportKey) => router.push({ pathname: '/(tabs)/analytics', params: { report } });
 
   const navItem = (item: { label: string; path: string; icon: keyof typeof Ionicons.glyphMap }) => {
     const visiblePath = item.path.replace('/(tabs)', '') || '/';
@@ -97,6 +106,56 @@ export function DesktopSidebar() {
       </View>
       <AppText variant="eyebrow" style={styles.sectionLabel}>YOUR MONEY</AppText>
       {mainItems.map(navItem)}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: reportsExpanded, selected: reportsSelected }}
+        onPress={() => {
+          if (!reportsSelected) {
+            setReportsExpanded(true);
+            selectReport('overview');
+            return;
+          }
+          setReportsExpanded((current) => !current);
+        }}
+        style={({ hovered, pressed }) => [styles.navItem, interactionTransition, reportsSelected && styles.navSelected, (hovered || pressed) && !reportsSelected && styles.navHover]}
+      >
+        {reportsSelected && <View style={styles.activeIndicator} />}
+        <Ionicons name="pie-chart-outline" size={19} color={reportsSelected ? colors.mintDeep : colors.slateDark} />
+        <AppText variant="bodyMedium" style={[styles.navText, reportsSelected && styles.selectedText]}>Reports</AppText>
+        <Ionicons name={reportsExpanded ? 'chevron-up' : 'chevron-down'} size={15} color={reportsSelected ? colors.mintDeep : colors.slate} />
+      </Pressable>
+      {reportsExpanded && <View style={styles.reportSubmenu}>
+        {primaryReportItems.map((item) => <Pressable
+          key={item.key}
+          accessibilityRole="link"
+          accessibilityState={{ selected: reportsSelected && activeReport === item.key }}
+          onPress={() => selectReport(item.key)}
+          style={({ hovered, pressed }) => [styles.reportSubItem, reportsSelected && activeReport === item.key && styles.reportSubItemSelected, (hovered || pressed) && !(reportsSelected && activeReport === item.key) && styles.navHover]}
+        >
+          <View style={[styles.reportSubDot, reportsSelected && activeReport === item.key && styles.reportSubDotSelected]} />
+          <AppText variant="caption" numberOfLines={1} style={[styles.reportSubText, reportsSelected && activeReport === item.key && styles.selectedText]}>{item.label}</AppText>
+        </Pressable>)}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showMoreReports }}
+          onPress={() => setMoreReportsExpanded((current) => !current)}
+          style={({ hovered, pressed }) => [styles.reportSubItem, (hovered || pressed) && styles.navHover]}
+        >
+          <Ionicons name="ellipsis-horizontal" size={13} color={colors.slate} />
+          <AppText variant="caption" style={styles.reportSubText}>More reports</AppText>
+          <Ionicons name={showMoreReports ? 'chevron-up' : 'chevron-down'} size={12} color={colors.slate} />
+        </Pressable>
+        {showMoreReports && moreReportItems.map((item) => <Pressable
+          key={item.key}
+          accessibilityRole="link"
+          accessibilityState={{ selected: reportsSelected && activeReport === item.key }}
+          onPress={() => selectReport(item.key)}
+          style={({ hovered, pressed }) => [styles.reportSubItem, styles.moreReportSubItem, reportsSelected && activeReport === item.key && styles.reportSubItemSelected, (hovered || pressed) && !(reportsSelected && activeReport === item.key) && styles.navHover]}
+        >
+          <View style={[styles.reportSubDot, reportsSelected && activeReport === item.key && styles.reportSubDotSelected]} />
+          <AppText variant="caption" numberOfLines={1} style={[styles.reportSubText, reportsSelected && activeReport === item.key && styles.selectedText]}>{item.label}</AppText>
+        </Pressable>)}
+      </View>}
       <AppText variant="eyebrow" style={[styles.sectionLabel, styles.manageLabel]}>MANAGE</AppText>
       {manageItems.map(navItem)}
       <View style={styles.spacer} />
@@ -151,6 +210,13 @@ const styles = StyleSheet.create({
   activeIndicator: { position: 'absolute', left: 0, width: 2, height: 18, borderRadius: 2, backgroundColor: colors.mintDeep },
   selectedText: { color: colors.mintDeep, fontFamily: typography.semibold },
   navText: { color: colors.slateDark, fontFamily: typography.medium, fontSize: 14, lineHeight: 18 },
+  reportSubmenu: { marginLeft: 17, paddingLeft: spacing.sm, borderLeftWidth: 1, borderLeftColor: colors.borderStrong, marginBottom: spacing.sm, gap: 1 },
+  reportSubItem: { minHeight: 32, borderRadius: radii.sm, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  moreReportSubItem: { paddingLeft: spacing.lg },
+  reportSubItemSelected: { backgroundColor: colors.mintWash },
+  reportSubDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.borderStrong },
+  reportSubDotSelected: { backgroundColor: colors.mintDeep },
+  reportSubText: { flex: 1, minWidth: 0, color: colors.slateDark, fontFamily: typography.medium, fontSize: 11.5, lineHeight: 15 },
   spacer: { flex: 1, minHeight: spacing.xl },
   profile: { borderTopWidth: 1, borderTopColor: colors.border, minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm, borderRadius: 11 },
   profileCopy: { flex: 1, minWidth: 0 },
