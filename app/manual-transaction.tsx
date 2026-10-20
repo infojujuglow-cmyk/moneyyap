@@ -131,8 +131,17 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const selectedSpace = spaces.find((space) => space.id === spaceId);
   const categoryLabel = (category?: Category | null) => {
     if (!category) return null;
-    const parent = categories.find((item) => item.id === category.parentId);
-    return parent ? `${parent.name} › ${category.name}` : category.name;
+    const path = [category.name];
+    const seen = new Set([category.id]);
+    let parentId = category.parentId;
+    while (parentId && !seen.has(parentId)) {
+      const parent = categories.find((item) => item.id === parentId);
+      if (!parent) break;
+      path.unshift(parent.name);
+      seen.add(parent.id);
+      parentId = parent.parentId;
+    }
+    return path.join(' › ');
   };
   const originalMatch = useMemo(() => {
     if (type !== 'refund' || !normalize(merchant)) return null;
@@ -250,9 +259,21 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const suggestedCategoryId = rankedCategories[0]?.id;
   const accountOptions: SmartSelectOption[] = rankedAccounts.map((account) => ({ id: account.id, label: account.name, detail: accountDetail(account), color: account.accent, searchText: account.institution ?? '', badge: account.id === suggestedAccountId ? 'Suggested' : undefined }));
   const destinationOptions: SmartSelectOption[] = rankedDestinations.map((account) => ({ id: account.id, label: account.name, detail: accountDetail(account), color: account.accent, searchText: account.institution ?? '', badge: account.id === suggestedDestinationId ? 'Suggested' : undefined }));
+  const availableCategoryIds = new Set(availableCategories.map((category) => category.id));
+  const suggestedCategoryAncestors = new Set<string>();
+  let suggestedParentId = categories.find((category) => category.id === suggestedCategoryId)?.parentId;
+  while (suggestedParentId && availableCategoryIds.has(suggestedParentId) && !suggestedCategoryAncestors.has(suggestedParentId)) {
+    suggestedCategoryAncestors.add(suggestedParentId);
+    suggestedParentId = categories.find((category) => category.id === suggestedParentId)?.parentId ?? null;
+  }
   const categoryOptions: SmartSelectOption[] = [
     ...(forVerification ? [{ id: '__clear_category__', label: 'Leave uncategorized', detail: 'Choose a category later' }] : []),
-    ...rankedCategories.map((category) => ({ id: category.id, label: categoryLabel(category)!, color: category.color, searchText: categories.find((parent) => parent.id === category.parentId)?.name ?? '', badge: category.id === suggestedCategoryId ? 'Suggested' : undefined })),
+    ...rankedCategories.map((category) => {
+      const path = categoryLabel(category)!;
+      const parentId = category.parentId && availableCategoryIds.has(category.parentId) ? category.parentId : null;
+      const label = category.parentId && !parentId ? path : category.name;
+      return { id: category.id, parentId, label, detail: path !== label ? path : undefined, color: category.color, searchText: path, badge: category.id === suggestedCategoryId ? 'Suggested' : suggestedCategoryAncestors.has(category.id) ? 'Suggested inside' : undefined };
+    }),
   ];
   const spaceOptions: SmartSelectOption[] = activeSpaces.map((space) => ({ id: space.id, label: space.name, color: space.color }));
   const railOptions: SmartSelectOption[] = rails.map((rail) => ({ id: rail, label: railLabels[rail], detail: rail === 'unknown' ? 'Keep the payment network unspecified' : undefined }));
@@ -300,7 +321,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
           <View style={styles.footer}>{error ? <AppText variant="caption" style={styles.error}>{error}</AppText> : null}<Button label={editingTransaction ? 'Save changes' : forVerification ? 'Save for verification' : 'Save transaction'} icon="checkmark" loading={saving} disabled={!valid} onPress={submit} /></View>
         </SafeAreaView>
       </KeyboardAvoidingView>
-      <SmartSelectSheet visible={picker !== null} title={sheetConfig.title} options={sheetConfig.options} selectedIds={sheetConfig.ids} searchPlaceholder={sheetConfig.placeholder} multiple={picker === 'tags'} onClose={() => setPicker(null)} onSelect={handleSheetSelect} />
+      <SmartSelectSheet visible={picker !== null} title={sheetConfig.title} options={sheetConfig.options} selectedIds={sheetConfig.ids} searchPlaceholder={sheetConfig.placeholder} multiple={picker === 'tags'} hierarchical={picker === 'category'} onClose={() => setPicker(null)} onSelect={handleSheetSelect} />
       {editingTransaction && <ConfirmActionDialog visible={deleteOpen} title="Delete this transaction?" message="It will be removed from your workspace history and analytics." confirmLabel="Delete transaction" onClose={() => setDeleteOpen(false)} onConfirm={async () => { await deleteTransaction(editingTransaction.id); router.back(); }} />}
     </View>
   );
