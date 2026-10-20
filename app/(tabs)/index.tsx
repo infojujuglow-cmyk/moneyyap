@@ -54,7 +54,7 @@ export default function HomeScreen() {
     </Surface>
   </View>;
   const category = <View style={styles.section}>
-    <View style={styles.categoryHeader}><View><AppText variant="h3">Top categories</AppText><AppText variant="caption" style={styles.timeframe}>This month</AppText></View><AppText variant="bodyMedium" style={styles.analyticsAction} onPress={() => router.push('/(tabs)/analytics')}>See analytics</AppText></View>
+    <View style={styles.categoryHeader}><View><AppText variant="h3">Top categories</AppText><AppText variant="caption" style={styles.timeframe}>This month</AppText></View><AppText variant="bodyMedium" style={styles.analyticsAction} onPress={() => router.push('/(tabs)/analytics')}>See reports</AppText></View>
     <Surface style={styles.categoryCard}>{topCategories.length ? <BarList items={topCategories} total={month.spending} /> : <AppText style={styles.emptyCardText}>No spending categories yet this month.</AppText>}</Surface>
   </View>;
   const recent = <View style={styles.section}><SectionHeader title="Recent activity" action="View all" onAction={() => router.push('/(tabs)/transactions')} /><Surface style={styles.listCard}>{visibleTransactions.length ? visibleTransactions.slice(0, 5).map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, new Date(item.transactionDate).toDateString() !== new Date(visibleTransactions[index - 1]?.transactionDate ?? item.transactionDate).toDateString() && styles.dateSeparator]} />}<TransactionRow transaction={item} compact onPress={() => router.push(`/transaction/${item.id}`)} /></View>) : <AppText style={styles.emptyCardText}>Your recent activity will appear here.</AppText>}</Surface></View>;

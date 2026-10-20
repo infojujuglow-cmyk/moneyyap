@@ -1,11 +1,11 @@
-import type { Category, MonthlyPoint, Transaction } from '@/types/finance';
+import type { Account, Category, CategoryType, MonthlyPoint, Transaction } from '@/types/finance';
 
 export const isSpend = (transaction: Transaction) => transaction.financialEffect === 'expense';
 export const isRefund = (transaction: Transaction) => transaction.type === 'refund';
 export const isIncome = (transaction: Transaction) => transaction.financialEffect === 'income' && !isRefund(transaction);
 export const expenseContribution = (transaction: Transaction) => isRefund(transaction) ? -transaction.amount : isSpend(transaction) ? transaction.amount : 0;
 
-export type AnalyticsRangeKey = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_30_days' | 'last_6_months' | 'custom';
+export type AnalyticsRangeKey = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_month' | 'last_30_days' | 'last_6_months' | 'custom';
 export type AnalyticsGrouping = 'three_hour' | 'day' | 'week' | 'month';
 
 export interface AnalyticsCustomRange {
@@ -65,6 +65,7 @@ const analyticsRangeMeta: Record<Exclude<AnalyticsRangeKey, 'custom'>, Pick<Anal
   yesterday: { label: 'Yesterday', comparisonLabel: 'vs previous day' },
   this_week: { label: 'This week', comparisonLabel: 'vs same period last week' },
   this_month: { label: 'This month', comparisonLabel: 'vs same period last month' },
+  last_month: { label: 'Last month', comparisonLabel: 'vs previous month' },
   last_30_days: { label: 'Last 30 days', comparisonLabel: 'vs previous 30 days' },
   last_6_months: { label: 'Last 6 months', comparisonLabel: 'vs previous 6 months' },
 };
@@ -110,6 +111,15 @@ export const resolveAnalyticsDateRange = (
     grouping = 'day';
     label = analyticsRangeMeta.this_month.label;
     comparisonLabel = analyticsRangeMeta.this_month.comparisonLabel;
+  } else if (key === 'last_month') {
+    start = new Date(currentMoment.getFullYear(), currentMoment.getMonth() - 1, 1);
+    end = new Date(currentMoment.getFullYear(), currentMoment.getMonth(), 1);
+    comparisonStart = new Date(currentMoment.getFullYear(), currentMoment.getMonth() - 2, 1);
+    comparisonEnd = start;
+    grouping = 'day';
+    label = analyticsRangeMeta.last_month.label;
+    comparisonLabel = analyticsRangeMeta.last_month.comparisonLabel;
+    displayEnd = new Date(end.getTime() - 1);
   } else if (key === 'last_30_days') {
     start = addDays(todayStart, -29);
     end = currentMoment;
@@ -232,6 +242,98 @@ export const incomeCategoryTotalsForTransactions = (transactions: Transaction[],
     .sort((a, b) => b.amount - a.amount);
 };
 
+export interface CategoryReportItem {
+  id: string;
+  name: string;
+  color: string;
+  amount: number;
+  parentId: string | null;
+  hasChildren: boolean;
+  transactionIds: string[];
+}
+
+const categoryTransactionAmount = (transaction: Transaction, type: CategoryType) =>
+  type === 'income' ? isIncome(transaction) ? transaction.amount : 0 : expenseContribution(transaction);
+
+export const categoryReportBreakdown = (
+  transactions: Transaction[],
+  categories: Category[],
+  type: CategoryType,
+  spaceId: string | null = null,
+  parentId: string | null = null,
+): CategoryReportItem[] => {
+  const scopedCategories = categories.filter((category) => category.type === type && (spaceId === null || category.spaceId === spaceId));
+  const categoryMap = new Map(scopedCategories.map((category) => [category.id, category]));
+  const childrenByParent = new Map<string | null, Category[]>();
+  scopedCategories.forEach((category) => childrenByParent.set(category.parentId, [...(childrenByParent.get(category.parentId) ?? []), category]));
+  const descendantIds = (categoryId: string) => {
+    const ids = new Set([categoryId]);
+    const queue = [categoryId];
+    while (queue.length) {
+      const current = queue.shift()!;
+      (childrenByParent.get(current) ?? []).forEach((child) => {
+        if (!ids.has(child.id)) { ids.add(child.id); queue.push(child.id); }
+      });
+    }
+    return ids;
+  };
+  const reportTransactions = transactions.filter((transaction) => categoryTransactionAmount(transaction, type) !== 0);
+  const rows = (childrenByParent.get(parentId) ?? []).map((category) => {
+    const ids = descendantIds(category.id);
+    const matching = reportTransactions.filter((transaction) => Boolean(transaction.categoryId && ids.has(transaction.categoryId)));
+    return {
+      id: category.id,
+      name: category.name,
+      color: category.color,
+      amount: matching.reduce((sum, transaction) => sum + categoryTransactionAmount(transaction, type), 0),
+      parentId: category.parentId,
+      hasChildren: (childrenByParent.get(category.id) ?? []).length > 0,
+      transactionIds: matching.map((transaction) => transaction.id),
+    };
+  }).filter((item) => item.amount > 0);
+  if (parentId === null) {
+    const uncategorized = reportTransactions.filter((transaction) => !transaction.categoryId || !categoryMap.has(transaction.categoryId));
+    const amount = uncategorized.reduce((sum, transaction) => sum + categoryTransactionAmount(transaction, type), 0);
+    if (amount > 0) rows.push({ id: '__uncategorized__', name: 'Uncategorized', color: '#9AA3AD', amount, parentId: null, hasChildren: false, transactionIds: uncategorized.map((transaction) => transaction.id) });
+  } else {
+    const direct = reportTransactions.filter((transaction) => transaction.categoryId === parentId);
+    const amount = direct.reduce((sum, transaction) => sum + categoryTransactionAmount(transaction, type), 0);
+    if (amount > 0) rows.push({ id: `__direct__:${parentId}`, name: 'Directly categorized', color: categoryMap.get(parentId)?.color ?? '#9AA3AD', amount, parentId, hasChildren: false, transactionIds: direct.map((transaction) => transaction.id) });
+  }
+  return rows.sort((left, right) => right.amount - left.amount || left.name.localeCompare(right.name));
+};
+
+export interface PayeeReportItem {
+  id: string;
+  name: string;
+  amount: number;
+  transactionIds: string[];
+}
+
+export const payeeBreakdownForTransactions = (transactions: Transaction[]): PayeeReportItem[] => {
+  const grouped = new Map<string, PayeeReportItem>();
+  transactions.filter((transaction) => isSpend(transaction) || isRefund(transaction)).forEach((transaction) => {
+    const name = transaction.counterpartyName?.trim() || transaction.merchant?.trim() || 'Unknown payee';
+    const id = name.toLocaleLowerCase();
+    const current = grouped.get(id) ?? { id, name, amount: 0, transactionIds: [] };
+    current.amount += expenseContribution(transaction);
+    current.transactionIds.push(transaction.id);
+    grouped.set(id, current);
+  });
+  return [...grouped.values()].filter((item) => item.amount > 0).sort((left, right) => right.amount - left.amount || left.name.localeCompare(right.name));
+};
+
+export const accountBalanceEffect = (transaction: Transaction, accountId: string) =>
+  (transaction.accountToId === accountId ? transaction.amount : 0) - (transaction.accountFromId === accountId ? transaction.amount : 0);
+
+export const accountBalancesAsOf = (accounts: Account[], transactions: Transaction[], endExclusive: Date) => accounts.map((account) => {
+  const laterEffect = transactions.reduce((sum, transaction) => {
+    const date = new Date(transaction.transactionDate);
+    return !Number.isNaN(date.getTime()) && date >= endExclusive ? sum + accountBalanceEffect(transaction, account.id) : sum;
+  }, 0);
+  return { ...account, balanceAsOf: account.balance - laterEffect };
+});
+
 export const categoryTotals = (transactions: Transaction[], categories: Category[], date = new Date(), spaceId: string | null = null) =>
   categoryTotalsForTransactions(monthToDateTransactions(transactions, date), categories, spaceId);
 
@@ -242,12 +344,16 @@ const withAxisVisibility = (items: MonthlyPoint[]) => {
 
 export const spendingTrendSeries = (transactions: Transaction[], range: AnalyticsDateRange): MonthlyPoint[] => {
   const periodTransactions = transactionsInRange(transactions, range.start, range.end);
-  const expenseTotal = (start: Date, end: Date) => periodTransactions
-    .filter((item) => {
+  const totals = (start: Date, end: Date) => {
+    const bucket = periodTransactions.filter((item) => {
       const itemDate = new Date(item.transactionDate);
-      return (isSpend(item) || isRefund(item)) && itemDate >= start && itemDate < end;
-    })
-    .reduce((sum, item) => sum + expenseContribution(item), 0);
+      return itemDate >= start && itemDate < end;
+    });
+    return {
+      income: bucket.filter(isIncome).reduce((sum, item) => sum + item.amount, 0),
+      expense: bucket.reduce((sum, item) => sum + expenseContribution(item), 0),
+    };
+  };
 
   if (range.grouping === 'three_hour') {
     const firstBucket = startOfLocalDay(range.start);
@@ -255,7 +361,7 @@ export const spendingTrendSeries = (transactions: Transaction[], range: Analytic
     return withAxisVisibility(Array.from({ length: bucketCount }, (_, index) => {
       const start = new Date(firstBucket.getTime() + index * 3 * 60 * 60 * 1000);
       const end = new Date(start.getTime() + 3 * 60 * 60 * 1000);
-      return { label: start.toLocaleTimeString('en-PH', { hour: 'numeric' }), income: 0, expense: expenseTotal(start, end) };
+      return { label: start.toLocaleTimeString('en-PH', { hour: 'numeric' }), ...totals(start, end) };
     }));
   }
 
@@ -268,7 +374,7 @@ export const spendingTrendSeries = (transactions: Transaction[], range: Analytic
       const label = range.key === 'this_week'
         ? start.toLocaleDateString('en-PH', { weekday: 'short' })
         : start.toLocaleDateString('en-PH', { month: bucketCount > 14 ? 'short' : undefined, day: 'numeric' });
-      return { label, income: 0, expense: expenseTotal(start, end) };
+      return { label, ...totals(start, end) };
     }));
   }
 
@@ -278,7 +384,7 @@ export const spendingTrendSeries = (transactions: Transaction[], range: Analytic
     return withAxisVisibility(Array.from({ length: bucketCount }, (_, index) => {
       const start = addDays(firstBucket, index * 7);
       const end = addDays(start, 7);
-      return { label: formatShortDate(start), income: 0, expense: expenseTotal(start, end) };
+      return { label: formatShortDate(start), ...totals(start, end) };
     }));
   }
 
@@ -287,7 +393,7 @@ export const spendingTrendSeries = (transactions: Transaction[], range: Analytic
   return withAxisVisibility(Array.from({ length: bucketCount }, (_, index) => {
     const start = new Date(firstBucket.getFullYear(), firstBucket.getMonth() + index, 1);
     const end = addMonths(start, 1);
-    return { label: start.toLocaleDateString('en-PH', { month: 'short' }), income: 0, expense: expenseTotal(start, end) };
+    return { label: start.toLocaleDateString('en-PH', { month: 'short' }), ...totals(start, end) };
   }));
 };
 

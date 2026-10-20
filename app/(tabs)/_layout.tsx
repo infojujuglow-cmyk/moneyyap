@@ -7,7 +7,7 @@ const icons = {
   index: ['home', 'home-outline'],
   transactions: ['receipt', 'receipt-outline'],
   add: ['add', 'add'],
-  analytics: ['stats-chart', 'stats-chart-outline'],
+  analytics: ['pie-chart', 'pie-chart-outline'],
   settings: ['person', 'person-outline'],
 } as const;
 
@@ -34,7 +34,7 @@ export default function TabLayout() {
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
       <Tabs.Screen name="transactions" options={{ title: 'Transactions' }} />
       <Tabs.Screen name="add" options={{ title: 'Talk' }} />
-      <Tabs.Screen name="analytics" options={{ title: 'Analytics' }} />
+      <Tabs.Screen name="analytics" options={{ title: 'Reports' }} />
       <Tabs.Screen name="settings" options={{ title: 'Me' }} />
     </Tabs>
   );

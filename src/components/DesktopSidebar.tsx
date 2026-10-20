@@ -12,7 +12,7 @@ const mainItems = [
   { label: 'Overview', path: '/(tabs)', icon: 'grid-outline' },
   { label: 'Transactions', path: '/(tabs)/transactions', icon: 'receipt-outline' },
   { label: 'Talk to MoneyYap', path: '/(tabs)/add', icon: 'chatbubble-ellipses-outline' },
-  { label: 'Analytics', path: '/(tabs)/analytics', icon: 'stats-chart-outline' },
+  { label: 'Reports', path: '/(tabs)/analytics', icon: 'pie-chart-outline' },
 ] as const;
 
 const manageItems = [

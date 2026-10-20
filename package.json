@@ -44,7 +44,8 @@
     "lint": "expo lint",
     "test:classification": "node scripts/test-transaction-classifier.mjs",
     "test:chat": "node scripts/test-chat-architecture.mjs",
-    "test": "npm run test:classification && npm run test:chat",
+    "test:reports": "node scripts/test-reports.mjs",
+    "test": "npm run test:classification && npm run test:chat && npm run test:reports",
     "doctor": "expo-doctor"
   },
   "private": true

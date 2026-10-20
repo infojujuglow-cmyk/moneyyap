@@ -11,8 +11,7 @@ const options: { key: AnalyticsRangeKey; label: string }[] = [
   { key: 'yesterday', label: 'Yesterday' },
   { key: 'this_week', label: 'This week' },
   { key: 'this_month', label: 'This month' },
-  { key: 'last_30_days', label: 'Last 30 days' },
-  { key: 'last_6_months', label: 'Last 6 months' },
+  { key: 'last_month', label: 'Last month' },
   { key: 'custom', label: 'Custom range' },
 ];
 
@@ -88,7 +87,7 @@ export function AnalyticsRangeSheet({ visible, selectedKey, customRange, onClose
               </>
             ) : (
               <>
-                <View style={styles.sheetHeader}><View style={styles.headerSpacer} /><AppText variant="h3">Filter analytics</AppText><Pressable hitSlop={10} onPress={onClose}><Ionicons name="close" size={23} color={colors.ink} /></Pressable></View>
+                <View style={styles.sheetHeader}><View style={styles.headerSpacer} /><AppText variant="h3">Report period</AppText><Pressable hitSlop={10} onPress={onClose}><Ionicons name="close" size={23} color={colors.ink} /></Pressable></View>
                 <View style={styles.optionList}>{options.map((option) => <Pressable key={option.key} onPress={() => { if (option.key === 'custom') { setCustomMode(true); return; } setCustomMode(false); onSelect(option.key); }} style={({ pressed }) => [styles.option, (selectedKey === option.key) && styles.optionSelected, pressed && styles.optionPressed]}><AppText variant="bodyMedium" style={selectedKey === option.key ? styles.optionSelectedText : undefined}>{option.label}</AppText>{selectedKey === option.key && <Ionicons name="checkmark" size={20} color={colors.mintDeep} />}</Pressable>)}</View>
               </>
             )}
