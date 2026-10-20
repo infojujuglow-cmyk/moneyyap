@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 import { supabase } from '@/lib/supabase';
+import { transactionAccountIds } from '@/lib/reconciliation';
 import { getActiveWorkspaceId, listAccessibleWorkspaces, loadFinanceSnapshot, rememberActiveWorkspaceId } from '@/services/supabase-finance';
 import type { Account, Category, ChatTurnResponse, ConversationMessage, Counterparty, ImageTransactionAnalysis, ParsedTransactionDraft, Space, Tag, Transaction, TransactionImageAttachment, WorkspaceMember, WorkspaceSummary } from '@/types/finance';
 import { useAuth } from './AuthContext';
@@ -29,6 +30,7 @@ interface FinanceContextValue {
   saveDraft: (draft: ParsedTransactionDraft) => Promise<Transaction>;
   rememberOwnAccountMapping: (draft: ParsedTransactionDraft, accountId: string) => Promise<void>;
   updateTransaction: (id: string, changes: Partial<Transaction>) => Promise<void>;
+  setTransactionsReconciled: (ids: string[], reconciled: boolean, accountId?: string | null) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   undoLastAdded: () => Promise<void>;
   addAccount: (account: Omit<Account, 'id'>) => Promise<void>;
@@ -313,6 +315,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
       bankTransactionLabel: draft.bankTransactionLabel ?? null, referenceNumber: draft.referenceNumber ?? null,
       rawExtraction: draft.rawExtraction ?? null,
       classificationReviewRequired: draft.classificationReviewRequired ?? false,
+      reconciliations: [],
       aiParsed: Boolean(draft.originalMessage), aiConfidence: draft.originalMessage ? draft.confidence : null, createdAt: now, updatedAt: now,
     };
     {
@@ -401,12 +404,55 @@ export function FinanceProvider({ children }: PropsWithChildren) {
       }
     }
     const updatedAt = new Date().toISOString();
-    setTransactions((items) => items.map((item) => item.id === id ? { ...item, ...changes, updatedAt } : item));
+    setTransactions((items) => items.map((item) => {
+      if (item.id !== id) return item;
+      const nextTransaction = { ...item, ...changes, updatedAt };
+      const linkedAccountIds = new Set(transactionAccountIds(nextTransaction));
+      return { ...nextTransaction, reconciliations: nextTransaction.reconciliations.filter((reconciliation) => linkedAccountIds.has(reconciliation.accountId)) };
+    }));
     if (previousTransaction) {
       const nextTransaction = { ...previousTransaction, ...changes, updatedAt };
       setAccounts((items) => applyTransactionToAccountBalances(applyTransactionToAccountBalances(items, previousTransaction, -1), nextTransaction));
     }
   }, [transactions]);
+
+  const setTransactionsReconciled = useCallback(async (ids: string[], reconciled: boolean, accountId: string | null = null) => {
+    if (!supabase || !session?.user.id) throw new Error('MoneyYap is not connected to Supabase.');
+    const uniqueIds = [...new Set(ids)].filter((id) => transactions.some((transaction) => transaction.id === id));
+    if (!uniqueIds.length) return;
+    const { data, error } = await supabase.rpc('set_transaction_reconciliations', {
+      p_transaction_ids: uniqueIds,
+      p_reconciled: reconciled,
+      p_account_id: accountId,
+    });
+    if (error) {
+      if (['42883', 'PGRST202'].includes(error.code ?? '')) throw new Error('Apply the latest transaction reconciliation migration, then refresh MoneyYap.');
+      throw error;
+    }
+    const rows = (data ?? []) as { transaction_id: string; account_id: string; reconciled_at: string | null }[];
+    if (reconciled) {
+      const expectedLegs = uniqueIds.reduce((count, id) => {
+        const transaction = transactions.find((item) => item.id === id);
+        return count + (transaction ? transactionAccountIds(transaction).filter((linkedId) => !accountId || linkedId === accountId).length : 0);
+      }, 0);
+      if (rows.length !== expectedLegs) throw new Error('Some transactions could not be reconciled. Refresh and try again.');
+    }
+    const updatedAt = new Date().toISOString();
+    setTransactions((items) => items.map((transaction) => {
+      if (!uniqueIds.includes(transaction.id)) return transaction;
+      if (!reconciled) return { ...transaction, reconciliations: accountId ? transaction.reconciliations.filter((item) => item.accountId !== accountId) : [], updatedAt };
+      const transactionRows = rows.filter((row) => row.transaction_id === transaction.id);
+      const reconciledAccountIds = new Set(transactionRows.map((row) => row.account_id));
+      return {
+        ...transaction,
+        reconciliations: [
+          ...transaction.reconciliations.filter((item) => !reconciledAccountIds.has(item.accountId)),
+          ...transactionRows.map((row) => ({ accountId: row.account_id, reconciledAt: row.reconciled_at ?? updatedAt, reconciledBy: session.user.id })),
+        ],
+        updatedAt,
+      };
+    }));
+  }, [session, transactions]);
 
   const deleteTransaction = useCallback(async (id: string) => {
     if (!supabase) throw new Error('MoneyYap is not connected to Supabase.');
@@ -529,10 +575,10 @@ export function FinanceProvider({ children }: PropsWithChildren) {
   const value = useMemo<FinanceContextValue>(() => ({
     accounts, categories, counterparties, members, spaces, tags, transactions, workspaceId, availableWorkspaces, switchWorkspace, createWorkspace, selectedSpaceId, setSelectedSpaceId,
     isLoading, refreshFinance, lastAdded, parseMessage, sendChatMessage, loadLatestConversation, clearConversationClarification,
-    parseTransactionImage, saveDraft, rememberOwnAccountMapping, updateTransaction, deleteTransaction,
+    parseTransactionImage, saveDraft, rememberOwnAccountMapping, updateTransaction, setTransactionsReconciled, deleteTransaction,
     undoLastAdded: async () => { if (lastAdded) await deleteTransaction(lastAdded.id); }, addAccount, updateAccount, setAccountActive,
     addSpace, updateSpace, archiveSpace, addCategory, updateCategory, archiveCategory, restoreCategory, addWorkspaceMember,
-  }), [accounts, addAccount, addCategory, addSpace, addWorkspaceMember, archiveCategory, archiveSpace, availableWorkspaces, categories, clearConversationClarification, counterparties, createWorkspace, deleteTransaction, isLoading, lastAdded, loadLatestConversation, members, parseMessage, parseTransactionImage, refreshFinance, rememberOwnAccountMapping, restoreCategory, saveDraft, selectedSpaceId, sendChatMessage, setAccountActive, spaces, switchWorkspace, tags, transactions, updateAccount, updateCategory, updateSpace, updateTransaction, workspaceId]);
+  }), [accounts, addAccount, addCategory, addSpace, addWorkspaceMember, archiveCategory, archiveSpace, availableWorkspaces, categories, clearConversationClarification, counterparties, createWorkspace, deleteTransaction, isLoading, lastAdded, loadLatestConversation, members, parseMessage, parseTransactionImage, refreshFinance, rememberOwnAccountMapping, restoreCategory, saveDraft, selectedSpaceId, sendChatMessage, setAccountActive, setTransactionsReconciled, spaces, switchWorkspace, tags, transactions, updateAccount, updateCategory, updateSpace, updateTransaction, workspaceId]);
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 }

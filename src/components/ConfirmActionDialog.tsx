@@ -9,11 +9,12 @@ interface ConfirmActionDialogProps {
   title: string;
   message: string;
   confirmLabel: string;
+  confirmVariant?: 'primary' | 'danger';
   onClose: () => void;
   onConfirm: () => Promise<void>;
 }
 
-export function ConfirmActionDialog({ visible, title, message, confirmLabel, onClose, onConfirm }: ConfirmActionDialogProps) {
+export function ConfirmActionDialog({ visible, title, message, confirmLabel, confirmVariant = 'danger', onClose, onConfirm }: ConfirmActionDialogProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const close = () => {
@@ -44,7 +45,7 @@ export function ConfirmActionDialog({ visible, title, message, confirmLabel, onC
         {error && <AppText variant="caption" style={styles.error}>{error}</AppText>}
         <View style={styles.actions}>
           <Button label="Cancel" variant="ghost" disabled={busy} onPress={close} />
-          <Button label={confirmLabel} variant="danger" loading={busy} onPress={confirm} />
+          <Button label={confirmLabel} variant={confirmVariant} loading={busy} onPress={confirm} />
         </View>
       </View>
     </View>

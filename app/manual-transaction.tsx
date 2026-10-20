@@ -8,6 +8,7 @@ import { SmartSelectField, SmartSelectSheet, type SmartSelectOption } from '@/co
 import { TransactionDateTimeField } from '@/components/TransactionDateTimeField';
 import { AppText, Button } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
+import { isTransactionReconciled, reconciliationDate, transactionAccountIds } from '@/lib/reconciliation';
 import { colors, radii, spacing, typography } from '@/theme';
 import type { Account, Category, ParsedTransactionDraft, PaymentRail, Transaction, TransactionType } from '@/types/finance';
 
@@ -53,7 +54,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const params = useLocalSearchParams<{ draft?: string; accountId?: string; spaceId?: string }>();
   const { width, height } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 700;
-  const { accounts, categories, counterparties, members, spaces, tags, transactions, selectedSpaceId, setSelectedSpaceId, saveDraft, updateTransaction, deleteTransaction } = useFinance();
+  const { accounts, categories, counterparties, members, spaces, tags, transactions, selectedSpaceId, setSelectedSpaceId, saveDraft, updateTransaction, setTransactionsReconciled, deleteTransaction } = useFinance();
   const editingTransaction = transactions.find((transaction) => transaction.id === editTransactionId);
   const activeAccounts = useMemo(() => accounts.filter((item) => item.isActive || item.id === editingTransaction?.accountFromId || item.id === editingTransaction?.accountToId), [accounts, editingTransaction]);
   const activeSpaces = useMemo(() => spaces.filter((item) => !item.isArchived || item.id === editingTransaction?.spaceId), [editingTransaction, spaces]);
@@ -109,9 +110,10 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
     return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
   });
   const [picker, setPicker] = useState<Picker>(null);
-  const [moreOpen, setMoreOpen] = useState(Boolean(initialDraft?.notes || initialDraft?.paymentRail && initialDraft.paymentRail !== 'unknown' || initialDraft?.tagIds?.length));
+  const [moreOpen, setMoreOpen] = useState(Boolean(initialDraft?.notes || initialDraft?.paymentRail && initialDraft.paymentRail !== 'unknown' || initialDraft?.tagIds?.length || editingTransaction?.reconciliations.length));
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reconciliationBusyAccountId, setReconciliationBusyAccountId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const movesMoney = type === 'transfer' || type === 'credit_card_payment';
   const spaceAccounts = useMemo(() => activeAccounts.filter((account) => !account.spaceId || account.spaceId === spaceId || account.id === accountId || account.id === destinationId), [accountId, activeAccounts, destinationId, spaceId]);
@@ -277,6 +279,14 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
     };
     router.replace({ pathname: '/manual-transaction', params: { draft: JSON.stringify(duplicateDraft) } });
   };
+  const reconciliationAccounts = editingTransaction ? transactionAccountIds(editingTransaction).map((id) => accounts.find((account) => account.id === id)).filter((account): account is Account => Boolean(account)) : [];
+  const toggleReconciliation = async (reconciliationAccountId: string) => {
+    if (!editingTransaction || reconciliationBusyAccountId) return;
+    setReconciliationBusyAccountId(reconciliationAccountId); setError(null);
+    try { await setTransactionsReconciled([editingTransaction.id], !isTransactionReconciled(editingTransaction, reconciliationAccountId), reconciliationAccountId); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to update reconciliation.'); }
+    finally { setReconciliationBusyAccountId(null); }
+  };
 
   const labels = {
     description: type === 'income' ? 'Received from' : type === 'refund' ? 'Refunded from' : 'Merchant / description',
@@ -343,6 +353,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
             <LabeledInput label="Notes · optional" value={notes} onChangeText={setNotes} placeholder="Add a note" multiline />
             <Pressable onPress={() => setMoreOpen((current) => !current)} style={({ pressed }) => [styles.moreToggle, pressed && styles.pressed]}><View style={styles.moreTitle}><Ionicons name="options-outline" size={19} color={colors.slateDark} /><AppText variant="bodyMedium">More details</AppText></View><Ionicons name={moreOpen ? 'chevron-up' : 'chevron-down'} size={19} color={colors.slate} /></Pressable>
             {moreOpen && <View style={styles.moreDetails}>
+              {editingTransaction && <View style={styles.reconciliationPanel}><View style={styles.reconciliationHeading}><View><AppText variant="eyebrow" style={styles.muted}>RECONCILIATION</AppText><AppText variant="caption" style={styles.muted}>Tracked independently for each linked account</AppText></View>{isTransactionReconciled(editingTransaction) && <View style={styles.reconciledPill}><Ionicons name="checkmark-circle" size={15} color={colors.mintDeep} /><AppText variant="caption" style={styles.reconciledText}>Fully reconciled</AppText></View>}</View>{reconciliationAccounts.map((account) => { const reconciled = isTransactionReconciled(editingTransaction, account.id); const reconciledAt = reconciliationDate(editingTransaction, account.id); return <Pressable key={account.id} accessibilityRole="checkbox" accessibilityState={{ checked: reconciled }} onPress={() => void toggleReconciliation(account.id)} style={({ pressed }) => [styles.reconciliationRow, pressed && styles.pressed]}><View style={[styles.reconciliationIcon, reconciled && styles.reconciliationIconDone]}><Ionicons name={reconciled ? 'checkmark' : 'ellipse-outline'} size={18} color={reconciled ? colors.mintDeep : colors.slate} /></View><View style={styles.reconciliationCopy}><AppText variant="bodyMedium">{account.name}</AppText><AppText variant="caption" style={styles.muted}>{reconciled && reconciledAt ? `Reconciled ${new Date(reconciledAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'Not reconciled'}</AppText></View>{reconciliationBusyAccountId === account.id ? <AppText variant="caption" style={styles.muted}>Saving…</AppText> : <AppText variant="caption" style={reconciled ? styles.unreconcileText : styles.reconcileText}>{reconciled ? 'Undo' : 'Mark reconciled'}</AppText>}</Pressable>; })}</View>}
               <SmartSelectField label="Payment method / rail" value={railLabels[paymentRail]} placeholder="Not specified" onPress={() => setPicker('rail')} hint="Separate from the financial account above" />
               {tags.length > 0 && <SmartSelectField label="Tags · optional" value={tagIds.length ? `${tagIds.length} selected` : null} placeholder="Choose tags" onPress={() => setPicker('tags')} />}
               {editingTransaction?.originalMessage && <View style={styles.original}><AppText variant="eyebrow" style={styles.muted}>Original message</AppText><AppText>“{editingTransaction.originalMessage}”</AppText></View>}
@@ -406,6 +417,16 @@ const styles = StyleSheet.create({
   moreToggle: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border },
   moreTitle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   moreDetails: { gap: spacing.xl },
+  reconciliationPanel: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, backgroundColor: colors.white, padding: spacing.md, gap: spacing.sm },
+  reconciliationHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, paddingBottom: spacing.xs },
+  reconciledPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderRadius: radii.pill, backgroundColor: colors.mintWash, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  reconciledText: { color: colors.mintDeep },
+  reconciliationRow: { minHeight: 56, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingTop: spacing.sm },
+  reconciliationIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  reconciliationIconDone: { backgroundColor: colors.mintWash },
+  reconciliationCopy: { flex: 1, minWidth: 0 },
+  reconcileText: { color: colors.mintDeep },
+  unreconcileText: { color: colors.slate },
   original: { gap: spacing.sm, backgroundColor: colors.mintWash, borderRadius: radii.md, padding: spacing.lg },
   footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: spacing.lg, gap: spacing.sm, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border },
   muted: { color: colors.slate }, error: { color: colors.danger, textAlign: 'center' }, pressed: { opacity: 0.72 },

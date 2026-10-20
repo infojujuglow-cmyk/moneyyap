@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
-import type { Account, Category, Counterparty, Space, Tag, Transaction, WorkspaceMember, WorkspaceSummary } from '@/types/finance';
+import type { Account, Category, Counterparty, Space, Tag, Transaction, TransactionReconciliation, WorkspaceMember, WorkspaceSummary } from '@/types/finance';
 
 export interface FinanceSnapshot {
   workspaceId: string;
@@ -37,7 +37,7 @@ const mapCounterparty = (row: Record<string, unknown>): Counterparty => ({
   defaultClassification: row.default_classification as Counterparty['defaultClassification'],
 });
 
-const mapTransaction = (row: Record<string, unknown>): Transaction => ({
+const mapTransaction = (row: Record<string, unknown>, reconciliations: TransactionReconciliation[] = []): Transaction => ({
   id: String(row.id), type: row.type as Transaction['type'], amount: Number(row.amount), currency: String(row.currency),
   financialEffect: (row.financial_effect ?? (row.type === 'expense' ? 'expense' : row.type === 'income' || row.type === 'refund' ? 'income' : 'internal_transfer')) as Transaction['financialEffect'],
   paymentRail: (row.payment_rail ?? 'unknown') as Transaction['paymentRail'],
@@ -50,6 +50,7 @@ const mapTransaction = (row: Record<string, unknown>): Transaction => ({
   originalMessage: row.original_message as string | null, bankTransactionLabel: row.bank_transaction_label as string | null,
   referenceNumber: row.reference_number as string | null, rawExtraction: row.raw_extraction as Record<string, unknown> | null,
   classificationReviewRequired: Boolean(row.classification_review_required),
+  reconciliations,
   aiParsed: Boolean(row.ai_parsed),
   aiConfidence: row.ai_confidence == null ? null : Number(row.ai_confidence), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
 });
@@ -95,7 +96,7 @@ export const loadFinanceSnapshot = async (knownWorkspaceId: string): Promise<Fin
   if (!supabase) return null;
   const workspaceId = knownWorkspaceId;
   if (!workspaceId) return null;
-  const [accountResult, categoryResult, transactionResult, counterpartyResult, memberResult, spaceResult, tagResult] = await Promise.all([
+  const [accountResult, categoryResult, transactionResult, counterpartyResult, memberResult, spaceResult, tagResult, reconciliationResult] = await Promise.all([
     supabase.from('account_balances').select('*').eq('workspace_id', workspaceId),
     supabase.from('categories').select('*').eq('workspace_id', workspaceId).order('sort_order'),
     supabase.from('transactions').select('*,transaction_tags(tag_id)').eq('workspace_id', workspaceId).order('transaction_date', { ascending: false }),
@@ -103,13 +104,21 @@ export const loadFinanceSnapshot = async (knownWorkspaceId: string): Promise<Fin
     supabase.from('workspace_members').select('user_id,role,profiles(full_name)').eq('workspace_id', workspaceId),
     supabase.from('spaces').select('*').eq('workspace_id', workspaceId).order('sort_order'),
     supabase.from('tags').select('*').eq('workspace_id', workspaceId).order('name'),
+    supabase.from('transaction_reconciliations').select('transaction_id,account_id,reconciled_at,reconciled_by').eq('workspace_id', workspaceId),
   ]);
   for (const result of [accountResult, categoryResult, transactionResult, counterpartyResult, memberResult, spaceResult, tagResult]) if (result.error) throw result.error;
+  if (reconciliationResult.error && !['42P01', 'PGRST205'].includes(reconciliationResult.error.code ?? '')) throw reconciliationResult.error;
+  const reconciliationsByTransaction = new Map<string, TransactionReconciliation[]>();
+  (reconciliationResult.data ?? []).forEach((row) => {
+    const transactionId = String(row.transaction_id);
+    const reconciliation = { accountId: String(row.account_id), reconciledAt: String(row.reconciled_at), reconciledBy: String(row.reconciled_by) };
+    reconciliationsByTransaction.set(transactionId, [...(reconciliationsByTransaction.get(transactionId) ?? []), reconciliation]);
+  });
   return {
     workspaceId,
     accounts: (accountResult.data ?? []).map((row) => mapAccount(row)),
     categories: (categoryResult.data ?? []).map((row) => mapCategory(row)),
-    transactions: (transactionResult.data ?? []).map((row) => mapTransaction(row)),
+    transactions: (transactionResult.data ?? []).map((row) => mapTransaction(row, reconciliationsByTransaction.get(String(row.id)) ?? [])),
     counterparties: (counterpartyResult.data ?? []).map((row) => mapCounterparty(row)),
     spaces: (spaceResult.data ?? []).map((row) => mapSpace(row)),
     tags: (tagResult.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name), color: String(row.color) })),

@@ -45,7 +45,8 @@
     "test:classification": "node scripts/test-transaction-classifier.mjs",
     "test:chat": "node scripts/test-chat-architecture.mjs",
     "test:reports": "node scripts/test-reports.mjs",
-    "test": "npm run test:classification && npm run test:chat && npm run test:reports",
+    "test:reconciliation": "node scripts/test-reconciliation.mjs",
+    "test": "npm run test:classification && npm run test:chat && npm run test:reports && npm run test:reconciliation",
     "doctor": "expo-doctor"
   },
   "private": true

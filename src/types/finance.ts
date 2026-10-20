@@ -74,6 +74,12 @@ export interface Counterparty {
   defaultClassification: FinancialEffect | null;
 }
 
+export interface TransactionReconciliation {
+  accountId: string;
+  reconciledAt: string;
+  reconciledBy: string;
+}
+
 export interface Tag {
   id: string;
   name: string;
@@ -104,6 +110,7 @@ export interface Transaction {
   referenceNumber: string | null;
   rawExtraction: Record<string, unknown> | null;
   classificationReviewRequired: boolean;
+  reconciliations: TransactionReconciliation[];
   aiParsed: boolean;
   aiConfidence: number | null;
   createdAt: string;
