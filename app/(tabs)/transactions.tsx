@@ -66,7 +66,7 @@ export default function TransactionsScreen() {
         </ScrollView>}
       </View>
 
-      {filtered.length ? <Surface style={styles.list}>{desktop && <View style={styles.tableHeader}><AppText variant="eyebrow" style={styles.typeHeader}>TYPE</AppText><AppText variant="eyebrow" style={styles.accountHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.receiverHeader}>COUNTERPARTY / DESTINATION</AppText><AppText variant="eyebrow" style={styles.categoryHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.notesHeader}>NOTES</AppText><AppText variant="eyebrow" style={styles.dateHeader}>DATE</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText></View>}{filtered.map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, desktop && styles.desktopSeparator]} />}<TransactionRow transaction={item} desktop={desktop} onPress={() => router.push(`/transaction/${item.id}`)} /></View>)}</Surface> : <Surface><EmptyState icon={forVerificationOnly ? 'checkmark-circle-outline' : 'receipt-outline'} title={forVerificationOnly ? 'All caught up' : 'Nothing here yet'} body={forVerificationOnly ? 'No transactions need verification in this view.' : 'Try another filter, or tell MoneyYap about a transaction.'} /></Surface>}
+      {filtered.length ? <Surface style={styles.list}>{desktop && <View style={styles.tableHeader}><AppText variant="eyebrow" style={styles.dateHeader}>DATE</AppText><AppText variant="eyebrow" style={styles.typeHeader}>TYPE</AppText><AppText variant="eyebrow" style={styles.accountHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.receiverHeader}>COUNTERPARTY / DESTINATION</AppText><AppText variant="eyebrow" style={styles.categoryHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.notesHeader}>NOTES</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText></View>}{filtered.map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, desktop && styles.desktopSeparator, new Date(item.transactionDate).toDateString() !== new Date(filtered[index - 1]?.transactionDate ?? item.transactionDate).toDateString() && styles.dateSeparator]} />}<TransactionRow transaction={item} desktop={desktop} onPress={() => router.push(`/transaction/${item.id}`)} /></View>)}</Surface> : <Surface><EmptyState icon={forVerificationOnly ? 'checkmark-circle-outline' : 'receipt-outline'} title={forVerificationOnly ? 'All caught up' : 'Nothing here yet'} body={forVerificationOnly ? 'No transactions need verification in this view.' : 'Try another filter, or tell MoneyYap about a transaction.'} /></Surface>}
     </Screen>
   );
 }
@@ -82,6 +82,7 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: spacing.lg },
   separator: { height: 1, backgroundColor: colors.border, marginLeft: 56 },
   desktopSeparator: { marginLeft: 0 },
+  dateSeparator: { backgroundColor: colors.borderStrong, marginLeft: 0 },
   tableHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44, borderBottomWidth: 1, borderBottomColor: colors.border },
   typeHeader: { width: 52, textAlign: 'center', color: colors.slate },
   accountHeader: { flex: 0.9, minWidth: 100, color: colors.slate },

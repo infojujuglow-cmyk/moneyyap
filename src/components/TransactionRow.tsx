@@ -47,12 +47,12 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
   if (desktop) return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${meta.label}: ${title}${transaction.classificationReviewRequired ? ', for verification' : ''}`} onPress={onPress} style={({ pressed }) => [styles.row, styles.desktopRow, transaction.classificationReviewRequired && styles.verificationRow, pressed && styles.pressed]}>
       {direction !== 'neutral' && <View style={[styles.directionIndicator, transaction.classificationReviewRequired && styles.verificationIndicator, { backgroundColor: directionColor }]} />}
+      <AppText variant="caption" style={styles.dateCell}>{new Date(transaction.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</AppText>
       <View style={styles.typeCell}><IconCircle name={meta.icon} color={directionColor} background={directionBackground} size={36} /></View>
       <View style={styles.accountCell}><AppText variant="caption" numberOfLines={1}>{account?.name ?? '—'}</AppText>{account?.institution && <AppText variant="caption" style={styles.cellMeta} numberOfLines={1}>{account.institution}</AppText>}</View>
       <View style={styles.receiverCell}><AppText variant="caption" numberOfLines={1}>{receiver}</AppText><AppText variant="caption" style={[styles.cellMeta, transaction.classificationReviewRequired && styles.verificationText]} numberOfLines={1}>{transaction.classificationReviewRequired ? 'For verification' : meta.label}</AppText></View>
       <AppText variant="caption" style={[styles.categoryCell, transaction.classificationReviewRequired && !category && styles.verificationText]} numberOfLines={1}>{categoryName}</AppText>
       <AppText variant="caption" style={styles.notesCell} numberOfLines={2}>{transaction.notes?.trim() || '—'}</AppText>
-      <AppText variant="caption" style={styles.dateCell}>{new Date(transaction.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</AppText>
       <View style={styles.amountWrap}><AppText variant="bodyMedium" style={{ color: direction === 'neutral' ? colors.neutralAmount : directionColor }}>{amountPrefix}{formatPeso(transaction.amount)}</AppText></View>
     </Pressable>
   );
