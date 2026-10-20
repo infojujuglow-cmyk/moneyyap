@@ -12,9 +12,11 @@ import { colors, radii, spacing, typography } from '@/theme';
 import type { Account, Category, ParsedTransactionDraft, PaymentRail, Transaction, TransactionType } from '@/types/finance';
 
 type Picker = 'space' | 'account' | 'destination' | 'category' | 'rail' | 'tags' | null;
+type EntryMode = TransactionType | 'verification';
 
-const transactionTypes: { id: TransactionType; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+const transactionTypes: { id: EntryMode; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'expense', label: 'Expense', icon: 'arrow-up' },
+  { id: 'verification', label: 'For verification', icon: 'help-circle-outline' },
   { id: 'income', label: 'Income', icon: 'arrow-down' },
   { id: 'transfer', label: 'Internal transfer', icon: 'swap-horizontal' },
   { id: 'credit_card_payment', label: 'Card payment', icon: 'card-outline' },
@@ -81,12 +83,15 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
       referenceNumber: editingTransaction.referenceNumber,
       bankTransactionLabel: editingTransaction.bankTransactionLabel,
       rawExtraction: editingTransaction.rawExtraction,
+      classificationReviewRequired: editingTransaction.classificationReviewRequired,
     } satisfies ParsedTransactionDraft;
     if (!params.draft) return null;
     try { return JSON.parse(params.draft) as ParsedTransactionDraft; } catch { return null; }
   }, [editingTransaction, params.draft]);
   const initialIncoming = initialDraft?.transactionType === 'income' || initialDraft?.transactionType === 'refund';
   const [type, setType] = useState<TransactionType>(initialDraft?.transactionType ?? 'expense');
+  const [forVerification, setForVerification] = useState(Boolean(initialDraft?.classificationReviewRequired && initialDraft.transactionType === 'expense'));
+  const [categoryMustBeChosen, setCategoryMustBeChosen] = useState(false);
   const [amount, setAmount] = useState(initialDraft?.amount ? String(initialDraft.amount) : '');
   const [merchant, setMerchant] = useState(initialDraft?.merchant ?? initialDraft?.counterpartyName ?? '');
   const [counterpartyId, setCounterpartyId] = useState(initialDraft?.counterpartyId ?? null);
@@ -119,7 +124,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const rankedDestinations = useMemo(() => rankByHistory(destinationAccounts, transactions, spaceId, merchant, (transaction) => transaction.accountToId, (account) => account.id), [destinationAccounts, merchant, spaceId, transactions]);
   const rankedCategories = useMemo(() => rankByHistory(availableCategories, transactions, spaceId, merchant, (transaction) => transaction.categoryId, (category) => category.id), [availableCategories, merchant, spaceId, transactions]);
   const effectiveDestinationId = destinationId && destinationAccounts.some((account) => account.id === destinationId) ? destinationId : rankedDestinations[0]?.id ?? null;
-  const effectiveCategoryId = categoryId && availableCategories.some((category) => category.id === categoryId) ? categoryId : rankedCategories[0]?.id ?? null;
+  const effectiveCategoryId = categoryId && availableCategories.some((category) => category.id === categoryId) ? categoryId : forVerification || categoryMustBeChosen ? null : rankedCategories[0]?.id ?? null;
   const selectedAccount = accounts.find((account) => account.id === effectiveAccountId);
   const selectedDestination = accounts.find((account) => account.id === effectiveDestinationId);
   const selectedCategory = categories.find((category) => category.id === effectiveCategoryId);
@@ -167,10 +172,14 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   }, [counterparties, movesMoney, spaceId, transactions, type]);
   const parsedAmount = Number(amount.replace(/,/g, ''));
   const needsCategory = type === 'expense' || type === 'income' || type === 'refund';
-  const valid = Boolean(spaceId && effectiveAccountId && parsedAmount > 0 && (!needsCategory || effectiveCategoryId) && (!movesMoney || effectiveDestinationId && effectiveAccountId !== effectiveDestinationId));
+  const valid = Boolean(spaceId && effectiveAccountId && parsedAmount > 0 && (!needsCategory || forVerification || effectiveCategoryId) && (!movesMoney || effectiveDestinationId && effectiveAccountId !== effectiveDestinationId));
 
-  const selectType = (nextType: TransactionType) => {
-    setType(nextType); setError(null);
+  const selectType = (nextMode: EntryMode) => {
+    const nextType = nextMode === 'verification' ? 'expense' : nextMode;
+    const sameFinancialType = nextType === type;
+    setCategoryMustBeChosen(forVerification && nextMode === 'expense');
+    setType(nextType); setForVerification(nextMode === 'verification'); setError(null);
+    if (sameFinancialType) return;
     const contextualAccountId = desktop && initialAccount?.isActive ? initialAccount.id : null;
     const contextIsCardDestination = nextType === 'credit_card_payment' && initialAccount?.type === 'credit_card';
     setAccountId(contextIsCardDestination ? null : contextualAccountId);
@@ -190,7 +199,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
         transactionType: type,
         financialEffect: type === 'expense' ? 'expense' : type === 'income' || type === 'refund' ? 'income' : 'internal_transfer',
         paymentRail, amount: parsedAmount, currency: editingTransaction?.currency ?? 'PHP', merchant: type === 'income' ? null : merchant.trim() || null,
-        counterpartyId, counterpartyName: merchant.trim() || initialDraft?.counterpartyName || null,
+        counterpartyId, counterpartyName: merchant.trim() || null,
         counterpartyType: initialDraft?.counterpartyType ?? (movesMoney ? 'own_account' : type === 'expense' || type === 'refund' ? 'merchant' : 'unknown'),
         counterpartyIdentifiers: initialDraft?.counterpartyIdentifiers ?? {}, ownershipStatus: movesMoney ? 'owned' : 'external',
         spaceId, categoryId: needsCategory ? effectiveCategoryId : null, tagIds,
@@ -198,6 +207,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
         accountToId: type === 'income' || type === 'refund' ? effectiveAccountId : movesMoney ? effectiveDestinationId : null,
         paidByUserId: editingTransaction?.paidByUserId ?? members[0]?.id ?? null, transactionDate: transactionDate.toISOString(), notes: notes.trim() || null,
         originalMessage: initialDraft?.originalMessage ?? '', confidence: initialDraft?.confidence ?? 1, needsConfirmation: false,
+        classificationReviewRequired: forVerification,
         sourceKind: initialDraft?.sourceKind, referenceNumber: initialDraft?.referenceNumber,
         bankTransactionLabel: initialDraft?.bankTransactionLabel, rawExtraction: initialDraft?.rawExtraction,
       };
@@ -219,7 +229,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
           paidByUserId: draft.paidByUserId,
           transactionDate: draft.transactionDate,
           notes: draft.notes,
-          classificationReviewRequired: false,
+          classificationReviewRequired: forVerification,
         });
       } else await saveDraft(draft);
       router.back();
@@ -240,7 +250,10 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const suggestedCategoryId = rankedCategories[0]?.id;
   const accountOptions: SmartSelectOption[] = rankedAccounts.map((account) => ({ id: account.id, label: account.name, detail: accountDetail(account), color: account.accent, searchText: account.institution ?? '', badge: account.id === suggestedAccountId ? 'Suggested' : undefined }));
   const destinationOptions: SmartSelectOption[] = rankedDestinations.map((account) => ({ id: account.id, label: account.name, detail: accountDetail(account), color: account.accent, searchText: account.institution ?? '', badge: account.id === suggestedDestinationId ? 'Suggested' : undefined }));
-  const categoryOptions: SmartSelectOption[] = rankedCategories.map((category) => ({ id: category.id, label: categoryLabel(category)!, color: category.color, searchText: categories.find((parent) => parent.id === category.parentId)?.name ?? '', badge: category.id === suggestedCategoryId ? 'Suggested' : undefined }));
+  const categoryOptions: SmartSelectOption[] = [
+    ...(forVerification ? [{ id: '__clear_category__', label: 'Leave uncategorized', detail: 'Choose a category later' }] : []),
+    ...rankedCategories.map((category) => ({ id: category.id, label: categoryLabel(category)!, color: category.color, searchText: categories.find((parent) => parent.id === category.parentId)?.name ?? '', badge: category.id === suggestedCategoryId ? 'Suggested' : undefined })),
+  ];
   const spaceOptions: SmartSelectOption[] = activeSpaces.map((space) => ({ id: space.id, label: space.name, color: space.color }));
   const railOptions: SmartSelectOption[] = rails.map((rail) => ({ id: rail, label: railLabels[rail], detail: rail === 'unknown' ? 'Keep the payment network unspecified' : undefined }));
   const tagOptions: SmartSelectOption[] = tags.map((tag) => ({ id: tag.id, label: `#${tag.name}`, color: tag.color }));
@@ -254,7 +267,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
     if (picker === 'space') selectSpace(id);
     if (picker === 'account') { setAccountId(id); if (destinationId === id) setDestinationId(null); }
     if (picker === 'destination') setDestinationId(id);
-    if (picker === 'category') setCategoryId(id);
+    if (picker === 'category') setCategoryId(id === '__clear_category__' ? null : id);
     if (picker === 'rail') setPaymentRail(id as PaymentRail);
     if (picker === 'tags') setTagIds((current) => current.includes(id) ? current.filter((tagId) => tagId !== id) : [...current, id]);
   };
@@ -266,15 +279,15 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
           <View style={styles.header}><View><AppText variant="h3">{editingTransaction ? 'Edit transaction' : 'Add manually'}</AppText><AppText variant="caption" style={styles.muted}>{editingTransaction ? 'Update transaction details' : 'Record a transaction'}</AppText></View><View style={styles.headerActions}>{editingTransaction && <Pressable accessibilityLabel="Delete transaction" onPress={remove} style={[styles.close, styles.delete]}><Ionicons name="trash-outline" size={20} color={colors.danger} /></Pressable>}<Pressable accessibilityLabel="Close" onPress={() => router.back()} style={styles.close}><Ionicons name="close" size={22} color={colors.ink} /></Pressable></View></View>
           <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeRow}>
-              {transactionTypes.map((item) => { const selected = type === item.id; return <Pressable key={item.id} onPress={() => selectType(item.id)} style={({ pressed }) => [styles.typeOption, selected && styles.typeSelected, pressed && styles.pressed]}><Ionicons name={item.icon} size={17} color={selected ? colors.mintDeep : colors.slate} /><AppText variant="caption" style={selected ? styles.typeTextSelected : styles.muted}>{item.label}</AppText></Pressable>; })}
+              {transactionTypes.map((item) => { const selected = item.id === 'verification' ? forVerification : type === item.id && !forVerification; return <Pressable key={item.id} onPress={() => selectType(item.id)} style={({ pressed }) => [styles.typeOption, selected && styles.typeSelected, pressed && styles.pressed]}><Ionicons name={item.icon} size={17} color={selected ? colors.mintDeep : colors.slate} /><AppText variant="caption" style={selected ? styles.typeTextSelected : styles.muted}>{item.label}</AppText></Pressable>; })}
             </ScrollView>
-            {editingTransaction?.classificationReviewRequired && <View style={styles.reviewWarning}><Ionicons name="alert-circle-outline" size={19} color={colors.warning} /><AppText variant="caption" style={styles.reviewWarningText}>Confirm the transaction type and accounts before saving this older AI-classified transaction.</AppText></View>}
+            {forVerification ? <View style={styles.reviewWarning}><Ionicons name="help-circle-outline" size={19} color={colors.warning} /><AppText variant="caption" style={styles.reviewWarningText}>Records this as an expense now. Add the merchant or category when you remember. Select Expense and save to clear this flag.</AppText></View> : editingTransaction?.classificationReviewRequired && editingTransaction.type !== 'expense' && <View style={styles.reviewWarning}><Ionicons name="alert-circle-outline" size={19} color={colors.warning} /><AppText variant="caption" style={styles.reviewWarningText}>Confirm the transaction type and accounts before saving this older AI-classified transaction.</AppText></View>}
             <Pressable onPress={() => setPicker('space')} style={({ pressed }) => [styles.spacePill, pressed && styles.pressed]}><View style={[styles.spaceDot, { backgroundColor: selectedSpace?.color ?? colors.mint }]} /><AppText variant="caption" style={styles.spaceName}>{selectedSpace?.name ?? 'Choose space'}</AppText><Ionicons name="chevron-down" size={14} color={colors.slate} /></Pressable>
             <View style={styles.amountBlock}><AppText variant="eyebrow" style={styles.muted}>Amount</AppText><View style={styles.amountField}><AppText style={styles.currency}>₱</AppText><TextInput value={amount} onChangeText={setAmount} placeholder="0" placeholderTextColor={colors.borderStrong} keyboardType="decimal-pad" autoFocus style={styles.amountInput} /></View></View>
-            <CounterpartyInput label={labels.description} value={merchant} onChangeText={(value) => { setMerchant(value); if (normalize(value) !== normalize(matchedCounterpartyName)) { setCounterpartyId(null); setMatchedCounterpartyName(null); } }} placeholder={labels.descriptionPlaceholder} suggestions={counterpartySuggestions} onSelect={(suggestion) => { setMerchant(suggestion.name); setCounterpartyId(suggestion.id); setMatchedCounterpartyName(suggestion.name); }} />
+            <CounterpartyInput label={forVerification ? 'Merchant / description · optional' : labels.description} value={merchant} onChangeText={(value) => { setMerchant(value); if (normalize(value) !== normalize(matchedCounterpartyName)) { setCounterpartyId(null); setMatchedCounterpartyName(null); } }} placeholder={forVerification ? 'Add later if unknown' : labels.descriptionPlaceholder} suggestions={counterpartySuggestions} onSelect={(suggestion) => { setMerchant(suggestion.name); setCounterpartyId(suggestion.id); setMatchedCounterpartyName(suggestion.name); }} />
             <SmartSelectField label={labels.account} value={selectedAccount?.name} placeholder="Choose an account" onPress={() => setPicker('account')} hint={!accountId && selectedAccount?.id === suggestedAccountId ? 'Suggested from recent activity' : null} />
             {movesMoney && <SmartSelectField label={labels.destination} value={selectedDestination?.name} placeholder="Choose an account" onPress={() => setPicker('destination')} hint={!destinationId && selectedDestination?.id === suggestedDestinationId ? 'Suggested from recent activity' : null} />}
-            {needsCategory && <SmartSelectField label={type === 'refund' ? 'Original category' : 'Category'} value={categoryLabel(selectedCategory)} placeholder="Choose a category" onPress={() => setPicker('category')} hint={originalMatch?.categoryId === effectiveCategoryId ? 'Matched from the original transaction' : !categoryId && selectedCategory?.id === suggestedCategoryId ? 'Suggested from similar transactions' : null} />}
+            {needsCategory && <SmartSelectField label={forVerification ? 'Category · optional' : type === 'refund' ? 'Original category' : 'Category'} value={categoryLabel(selectedCategory)} placeholder={forVerification ? 'Add later if unknown' : 'Choose a category'} onPress={() => setPicker('category')} hint={forVerification ? 'Leave blank until you can verify it' : categoryMustBeChosen && !categoryId ? 'Choose the correct category to mark this verified' : originalMatch?.categoryId === effectiveCategoryId ? 'Matched from the original transaction' : !categoryId && selectedCategory?.id === suggestedCategoryId ? 'Suggested from similar transactions' : null} />}
             <TransactionDateTimeField value={transactionDate} onChange={setTransactionDate} />
             <LabeledInput label="Notes · optional" value={notes} onChangeText={setNotes} placeholder="Add a note" multiline />
             <Pressable onPress={() => setMoreOpen((current) => !current)} style={({ pressed }) => [styles.moreToggle, pressed && styles.pressed]}><View style={styles.moreTitle}><Ionicons name="options-outline" size={19} color={colors.slateDark} /><AppText variant="bodyMedium">More details</AppText></View><Ionicons name={moreOpen ? 'chevron-up' : 'chevron-down'} size={19} color={colors.slate} /></Pressable>
@@ -284,7 +297,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
               {editingTransaction?.originalMessage && <View style={styles.original}><AppText variant="eyebrow" style={styles.muted}>Original message</AppText><AppText>“{editingTransaction.originalMessage}”</AppText></View>}
             </View>}
           </ScrollView>
-          <View style={styles.footer}>{error ? <AppText variant="caption" style={styles.error}>{error}</AppText> : null}<Button label={editingTransaction ? 'Save changes' : 'Save transaction'} icon="checkmark" loading={saving} disabled={!valid} onPress={submit} /></View>
+          <View style={styles.footer}>{error ? <AppText variant="caption" style={styles.error}>{error}</AppText> : null}<Button label={editingTransaction ? 'Save changes' : forVerification ? 'Save for verification' : 'Save transaction'} icon="checkmark" loading={saving} disabled={!valid} onPress={submit} /></View>
         </SafeAreaView>
       </KeyboardAvoidingView>
       <SmartSelectSheet visible={picker !== null} title={sheetConfig.title} options={sheetConfig.options} selectedIds={sheetConfig.ids} searchPlaceholder={sheetConfig.placeholder} multiple={picker === 'tags'} onClose={() => setPicker(null)} onSelect={handleSheetSelect} />

@@ -18,6 +18,7 @@ export default function TransactionsScreen() {
   const { transactions, accounts, categories, selectedSpaceId } = useFinance();
   const [query, setQuery] = useState('');
   const [thisMonth, setThisMonth] = useState(true);
+  const [forVerificationOnly, setForVerificationOnly] = useState(false);
   const [type, setType] = useState<TransactionType | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
@@ -27,6 +28,7 @@ export default function TransactionsScreen() {
     const date = new Date(item.transactionDate);
     const now = new Date();
     if (selectedSpaceId && item.spaceId !== selectedSpaceId) return false;
+    if (forVerificationOnly && !item.classificationReviewRequired) return false;
     if (thisMonth && (date.getMonth() !== now.getMonth() || date.getFullYear() !== now.getFullYear())) return false;
     if (type && item.type !== type) return false;
     if (accountId && item.accountFromId !== accountId && item.accountToId !== accountId) return false;
@@ -36,7 +38,9 @@ export default function TransactionsScreen() {
       if (!`${item.counterpartyName ?? ''} ${item.merchant ?? ''} ${category} ${item.notes ?? ''} ${item.originalMessage ?? ''}`.toLowerCase().includes(query.toLowerCase())) return false;
     }
     return true;
-  }).sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()), [accountId, categories, categoryId, query, selectedSpaceId, thisMonth, transactions, type]);
+  }).sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()), [accountId, categories, categoryId, forVerificationOnly, query, selectedSpaceId, thisMonth, transactions, type]);
+
+  const verificationCount = transactions.filter((item) => item.classificationReviewRequired && (!selectedSpaceId || item.spaceId === selectedSpaceId)).length;
 
   const selectedAccount = accounts.find((item) => item.id === accountId)?.name;
   const selectedCategory = categories.find((item) => item.id === categoryId)?.name;
@@ -49,6 +53,7 @@ export default function TransactionsScreen() {
       <View style={[styles.filters, desktop && styles.desktopFilters]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
           <Chip label={thisMonth ? 'This month' : 'All time'} selected={thisMonth} icon="calendar-outline" onPress={() => setThisMonth((value) => !value)} />
+          <Chip label={`For verification (${verificationCount})`} selected={forVerificationOnly} icon="help-circle-outline" onPress={() => { if (!forVerificationOnly) { setThisMonth(false); setType(null); setCategoryId(null); } setForVerificationOnly(!forVerificationOnly); setPicker(null); }} />
           <Chip label={type ? type.replaceAll('_', ' ') : 'Type'} selected={Boolean(type)} icon="swap-vertical-outline" onPress={() => setPicker(picker === 'type' ? null : 'type')} />
           <Chip label={selectedAccount ?? 'Account'} selected={Boolean(accountId)} icon="wallet-outline" onPress={() => setPicker(picker === 'account' ? null : 'account')} />
           <Chip label={selectedCategory ?? (filterCategoryType ? 'Category' : 'Choose type first')} selected={Boolean(categoryId)} icon="pricetag-outline" onPress={() => setPicker(filterCategoryType ? picker === 'category' ? null : 'category' : 'type')} />
@@ -61,7 +66,7 @@ export default function TransactionsScreen() {
         </ScrollView>}
       </View>
 
-      {filtered.length ? <Surface style={styles.list}>{desktop && <View style={styles.tableHeader}><AppText variant="eyebrow" style={styles.typeHeader}>TYPE</AppText><AppText variant="eyebrow" style={styles.accountHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.receiverHeader}>COUNTERPARTY / DESTINATION</AppText><AppText variant="eyebrow" style={styles.categoryHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.notesHeader}>NOTES</AppText><AppText variant="eyebrow" style={styles.dateHeader}>DATE</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText></View>}{filtered.map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, desktop && styles.desktopSeparator]} />}<TransactionRow transaction={item} desktop={desktop} onPress={() => router.push(`/transaction/${item.id}`)} /></View>)}</Surface> : <Surface><EmptyState icon="receipt-outline" title="Nothing here yet" body="Try another filter, or tell MoneyYap about a transaction." /></Surface>}
+      {filtered.length ? <Surface style={styles.list}>{desktop && <View style={styles.tableHeader}><AppText variant="eyebrow" style={styles.typeHeader}>TYPE</AppText><AppText variant="eyebrow" style={styles.accountHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.receiverHeader}>COUNTERPARTY / DESTINATION</AppText><AppText variant="eyebrow" style={styles.categoryHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.notesHeader}>NOTES</AppText><AppText variant="eyebrow" style={styles.dateHeader}>DATE</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText></View>}{filtered.map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, desktop && styles.desktopSeparator]} />}<TransactionRow transaction={item} desktop={desktop} onPress={() => router.push(`/transaction/${item.id}`)} /></View>)}</Surface> : <Surface><EmptyState icon={forVerificationOnly ? 'checkmark-circle-outline' : 'receipt-outline'} title={forVerificationOnly ? 'All caught up' : 'Nothing here yet'} body={forVerificationOnly ? 'No transactions need verification in this view.' : 'Try another filter, or tell MoneyYap about a transaction.'} /></Surface>}
     </Screen>
   );
 }

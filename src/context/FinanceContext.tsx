@@ -312,7 +312,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
       transactionDate: draft.transactionDate, notes: persistedNotes, originalMessage: draft.originalMessage || null,
       bankTransactionLabel: draft.bankTransactionLabel ?? null, referenceNumber: draft.referenceNumber ?? null,
       rawExtraction: draft.rawExtraction ?? null,
-      classificationReviewRequired: false,
+      classificationReviewRequired: draft.classificationReviewRequired ?? false,
       aiParsed: Boolean(draft.originalMessage), aiConfidence: draft.originalMessage ? draft.confidence : null, createdAt: now, updatedAt: now,
     };
     {
@@ -321,7 +321,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
         type: transaction.type, financial_effect: transaction.financialEffect, payment_rail: transaction.paymentRail,
         counterparty_id: transaction.counterpartyId, counterparty_name: transaction.counterpartyName, ownership_status: transaction.ownershipStatus,
         bank_transaction_label: transaction.bankTransactionLabel, reference_number: transaction.referenceNumber, raw_extraction: transaction.rawExtraction,
-        classification_review_required: false,
+        classification_review_required: transaction.classificationReviewRequired,
         amount: transaction.amount, currency: transaction.currency, merchant: transaction.merchant,
         category_id: transaction.categoryId, account_from_id: transaction.accountFromId, account_to_id: transaction.accountToId,
         transaction_date: transaction.transactionDate, notes: transaction.notes, original_message: transaction.originalMessage,

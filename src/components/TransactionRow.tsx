@@ -38,31 +38,31 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
   const directionColor = positive ? colors.income : negative ? colors.expense : meta.color;
   const directionBackground = positive ? colors.incomeWash : negative ? colors.expenseWash : meta.background;
   const amountPrefix = positive ? '+' : negative ? '−' : '';
-  const title = transaction.counterpartyName ?? transaction.merchant ?? meta.label;
-  const detail = `${category ? `${parent ? `${parent.name} › ` : ''}${category.name}` : meta.label}${space ? ` · ${space.name}` : ''}${account ? ` · ${account.name}` : ''}${transaction.paymentRail !== 'unknown' ? ` · via ${transaction.paymentRail.replaceAll('_', ' ')}` : ''}`;
+  const title = transaction.counterpartyName ?? transaction.merchant ?? (transaction.classificationReviewRequired ? 'For verification' : meta.label);
+  const detail = `${transaction.classificationReviewRequired ? 'For verification · ' : ''}${category ? `${parent ? `${parent.name} › ` : ''}${category.name}` : meta.label}${space ? ` · ${space.name}` : ''}${account ? ` · ${account.name}` : ''}${transaction.paymentRail !== 'unknown' ? ` · via ${transaction.paymentRail.replaceAll('_', ' ')}` : ''}`;
   const receiver = transaction.type === 'transfer' || transaction.type === 'credit_card_payment'
     ? destinationAccount?.name ?? '—'
     : transaction.counterpartyName ?? transaction.merchant ?? '—';
-  const categoryName = category ? `${parent ? `${parent.name} › ` : ''}${category.name}` : '—';
+  const categoryName = category ? `${parent ? `${parent.name} › ` : ''}${category.name}` : transaction.classificationReviewRequired ? 'To verify' : '—';
   if (desktop) return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${meta.label}: ${title}`} onPress={onPress} style={({ pressed }) => [styles.row, styles.desktopRow, pressed && styles.pressed]}>
-      {direction !== 'neutral' && <View style={[styles.directionIndicator, { backgroundColor: directionColor }]} />}
+    <Pressable accessibilityRole="button" accessibilityLabel={`${meta.label}: ${title}${transaction.classificationReviewRequired ? ', for verification' : ''}`} onPress={onPress} style={({ pressed }) => [styles.row, styles.desktopRow, transaction.classificationReviewRequired && styles.verificationRow, pressed && styles.pressed]}>
+      {direction !== 'neutral' && <View style={[styles.directionIndicator, transaction.classificationReviewRequired && styles.verificationIndicator, { backgroundColor: directionColor }]} />}
       <View style={styles.typeCell}><IconCircle name={meta.icon} color={directionColor} background={directionBackground} size={36} /></View>
       <View style={styles.accountCell}><AppText variant="caption" numberOfLines={1}>{account?.name ?? '—'}</AppText>{account?.institution && <AppText variant="caption" style={styles.cellMeta} numberOfLines={1}>{account.institution}</AppText>}</View>
-      <View style={styles.receiverCell}><AppText variant="caption" numberOfLines={1}>{receiver}</AppText><AppText variant="caption" style={styles.cellMeta} numberOfLines={1}>{meta.label}</AppText></View>
-      <AppText variant="caption" style={styles.categoryCell} numberOfLines={1}>{categoryName}</AppText>
+      <View style={styles.receiverCell}><AppText variant="caption" numberOfLines={1}>{receiver}</AppText><AppText variant="caption" style={[styles.cellMeta, transaction.classificationReviewRequired && styles.verificationText]} numberOfLines={1}>{transaction.classificationReviewRequired ? 'For verification' : meta.label}</AppText></View>
+      <AppText variant="caption" style={[styles.categoryCell, transaction.classificationReviewRequired && !category && styles.verificationText]} numberOfLines={1}>{categoryName}</AppText>
       <AppText variant="caption" style={styles.notesCell} numberOfLines={2}>{transaction.notes?.trim() || '—'}</AppText>
       <AppText variant="caption" style={styles.dateCell}>{new Date(transaction.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</AppText>
       <View style={styles.amountWrap}><AppText variant="bodyMedium" style={{ color: direction === 'neutral' ? colors.slateDark : directionColor }}>{amountPrefix}{formatPeso(transaction.amount)}</AppText></View>
     </Pressable>
   );
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.row, compact && styles.compact, pressed && styles.pressed]}>
-      {direction !== 'neutral' && <View style={[styles.directionIndicator, { backgroundColor: directionColor }]} />}
+    <Pressable accessibilityRole="button" accessibilityLabel={`${title}${transaction.classificationReviewRequired ? ', for verification' : ''}`} onPress={onPress} style={({ pressed }) => [styles.row, compact && styles.compact, transaction.classificationReviewRequired && styles.verificationRow, pressed && styles.pressed]}>
+      {direction !== 'neutral' && <View style={[styles.directionIndicator, transaction.classificationReviewRequired && styles.verificationIndicator, { backgroundColor: directionColor }]} />}
       <IconCircle name={(category?.icon as keyof typeof Ionicons.glyphMap) ?? meta.icon} color={directionColor} background={directionBackground} size={44} />
       <View style={styles.copy}>
         <AppText variant="bodyMedium" numberOfLines={1}>{title}</AppText>
-        <AppText variant="caption" style={styles.meta} numberOfLines={1}>{detail}</AppText>
+        <AppText variant="caption" style={[styles.meta, transaction.classificationReviewRequired && styles.verificationText]} numberOfLines={1}>{detail}</AppText>
       </View>
       <View style={styles.amountWrap}>
         <AppText variant="bodyMedium" style={{ color: direction === 'neutral' ? colors.slateDark : directionColor }}>
@@ -78,6 +78,7 @@ const styles = StyleSheet.create({
   row: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, position: 'relative' },
   compact: { minHeight: 64, paddingVertical: spacing.sm },
   desktopRow: { minHeight: 74 },
+  verificationRow: { backgroundColor: '#FFFAEF', borderRadius: radii.sm, marginHorizontal: -spacing.sm, paddingHorizontal: spacing.sm },
   copy: { flex: 1, gap: 2 },
   typeCell: { width: 52, alignItems: 'center' },
   accountCell: { flex: 0.9, minWidth: 100, gap: 2 },
@@ -88,6 +89,8 @@ const styles = StyleSheet.create({
   dateCell: { width: 100, color: colors.slateDark },
   amountWrap: { alignItems: 'flex-end', gap: 2, minWidth: 92 },
   directionIndicator: { position: 'absolute', left: -spacing.lg, width: 3, height: 32, borderRadius: 3 },
+  verificationIndicator: { left: 0 },
+  verificationText: { color: '#8A5B0A' },
   meta: { color: colors.slate },
   pressed: { opacity: 0.65, backgroundColor: colors.surface, borderRadius: radii.md },
 });

@@ -133,6 +133,7 @@ export interface ParsedTransactionDraft {
   originalMessage: string;
   confidence: number;
   needsConfirmation: boolean;
+  classificationReviewRequired?: boolean;
   confirmationQuestion?: string;
   candidateAccountIds?: string[];
   candidateCategoryIds?: string[];
