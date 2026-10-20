@@ -60,7 +60,7 @@ function AccountCard({ account, transactions, desktop }: { account: Account; tra
       <Surface style={[styles.card, !account.isActive ? styles.archived : {}]}>
         <View style={styles.accountTop}>
           <View style={[styles.institution, { backgroundColor: `${account.accent}18` }]}><Ionicons name={account.type === 'credit_card' ? 'card-outline' : account.type === 'cash' ? 'cash-outline' : account.type === 'ewallet' ? 'phone-portrait-outline' : 'business-outline'} size={22} color={account.accent} /></View>
-          <View style={styles.accountCopy}><AppText variant="bodyMedium">{account.name}</AppText><AppText variant="caption" style={styles.muted}>{account.isActive ? (account.type === 'credit_card' ? 'Credit card · liability' : account.type.replace('_', ' ')) : 'Removed · history preserved'}</AppText></View>
+          <View style={styles.accountCopy}><AppText variant="bodyMedium">{account.name}</AppText><AppText variant="caption" style={styles.muted}>{account.isActive ? `${account.type === 'credit_card' ? 'Credit card · liability' : account.type.replace('_', ' ')} · ${account.ownerUserId ? 'Private' : 'Shared'}` : 'Removed · history preserved'}</AppText></View>
           <View style={styles.balance}><AppText variant="h3" style={account.type === 'credit_card' ? styles.owed : undefined}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText><Ionicons name="chevron-forward" size={16} color={colors.slate} /></View>
         </View>
         {recent && <View style={styles.activity}><AppText variant="caption" style={styles.muted}>Latest activity</AppText><AppText variant="caption">{recent.merchant ?? recent.type.replaceAll('_', ' ')} · {formatPeso(recent.amount)}</AppText></View>}

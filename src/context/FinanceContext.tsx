@@ -279,7 +279,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
     let counterpartyId = draft.counterpartyId ?? null;
     const normalizedCounterpartyName = draft.counterpartyName?.toLocaleLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '') ?? '';
     if (!counterpartyId && normalizedCounterpartyName) {
-      const { data: existing } = await supabase.from('counterparties').select('id').eq('workspace_id', workspaceId).eq('normalized_name', normalizedCounterpartyName).maybeSingle();
+      const { data: existing } = await supabase.from('counterparties').select('id').eq('workspace_id', workspaceId).eq('created_by', session.user.id).eq('normalized_name', normalizedCounterpartyName).maybeSingle();
       if (existing?.id) counterpartyId = String(existing.id);
       else {
         const { data: created, error: counterpartyError } = await supabase.from('counterparties').insert({
@@ -417,17 +417,15 @@ export function FinanceProvider({ children }: PropsWithChildren) {
 
   const addAccount = useCallback(async (account: Omit<Account, 'id'>) => {
     if (!supabase || !workspaceId) throw new Error('Create a workspace before adding an account.');
-    let id: string;
     {
-      const { data, error } = await supabase.from('accounts').insert({
+      const { error } = await supabase.from('accounts').insert({
         workspace_id: workspaceId, space_id: account.spaceId, owner_user_id: account.ownerUserId, name: account.name, type: account.type,
         institution: account.institution, currency: account.currency, opening_balance: account.openingBalance, accent: account.accent, is_active: account.isActive,
-      }).select('id').single();
+      });
       if (error) throw error;
-      id = String(data.id);
     }
-    setAccounts((items) => [...items, { ...account, id }]);
-  }, [workspaceId]);
+    await refreshFinance();
+  }, [refreshFinance, workspaceId]);
 
   const setAccountActive = useCallback(async (id: string, isActive: boolean) => {
     if (!supabase) throw new Error('MoneyYap is not connected to Supabase.');

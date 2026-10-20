@@ -147,7 +147,7 @@ Deno.serve(async (request) => {
     const [accountResult, identifierResult, counterpartyResult, categoryResult, memberResult, spaceResult, tagResult, ruleResult, recentResult] = await Promise.all([
       supabase.from('accounts').select('id,name,type,institution,owner_user_id,space_id').eq('workspace_id', workspaceId).eq('is_active', true),
       supabase.from('account_identifiers').select('account_id,kind,normalized_value,institution,confidence').eq('workspace_id', workspaceId),
-      supabase.from('counterparties').select('id,display_name,normalized_name,type,identifiers,owned_account_id,default_category_id,default_classification,confidence').eq('workspace_id', workspaceId),
+      supabase.from('counterparties').select('id,display_name,normalized_name,type,identifiers,owned_account_id,default_category_id,default_classification,confidence').eq('workspace_id', workspaceId).eq('created_by', user.id),
       supabase.from('categories').select('id,name,type,space_id,parent_id').eq('workspace_id', workspaceId).eq('is_archived', false),
       supabase.from('workspace_members').select('user_id,profiles(full_name)').eq('workspace_id', workspaceId),
       supabase.from('spaces').select('id,name').eq('workspace_id', workspaceId).eq('is_archived', false).order('sort_order'),
