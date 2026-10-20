@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: spacing.lg },
   separator: { height: 1, backgroundColor: colors.border, marginLeft: 56 },
   desktopSeparator: { marginLeft: 0 },
-  dateSeparator: { backgroundColor: colors.borderStrong, marginLeft: 0 },
+  dateSeparator: { height: 2, backgroundColor: colors.borderStrong, marginLeft: 0 },
   tableHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44, borderBottomWidth: 1, borderBottomColor: colors.border },
   typeHeader: { width: 52, textAlign: 'center', color: colors.slate },
   accountHeader: { flex: 0.9, minWidth: 100, color: colors.slate },

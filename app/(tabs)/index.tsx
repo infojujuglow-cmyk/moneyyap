@@ -113,5 +113,5 @@ const styles = StyleSheet.create({
   listCard: { paddingHorizontal: spacing.lg },
   emptyCardText: { color: colors.slate, paddingVertical: spacing.sm },
   separator: { height: 1, backgroundColor: colors.border, marginLeft: 56 },
-  dateSeparator: { backgroundColor: colors.borderStrong, marginLeft: 0 },
+  dateSeparator: { height: 2, backgroundColor: colors.borderStrong, marginLeft: 0 },
 });
