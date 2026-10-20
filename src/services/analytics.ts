@@ -5,6 +5,13 @@ export const isRefund = (transaction: Transaction) => transaction.type === 'refu
 export const isIncome = (transaction: Transaction) => transaction.financialEffect === 'income' && !isRefund(transaction);
 export const expenseContribution = (transaction: Transaction) => isRefund(transaction) ? -transaction.amount : isSpend(transaction) ? transaction.amount : 0;
 
+export const formatReportPercentage = (amount: number, total: number) => {
+  if (total <= 0 || amount <= 0) return '0%';
+  const percentage = amount / total * 100;
+  if (percentage < 1) return '<1%';
+  return `${percentage < 10 ? percentage.toFixed(1) : Math.round(percentage)}%`;
+};
+
 export type AnalyticsRangeKey = 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_month' | 'last_30_days' | 'last_6_months' | 'custom';
 export type AnalyticsGrouping = 'three_hour' | 'day' | 'week' | 'month';
 

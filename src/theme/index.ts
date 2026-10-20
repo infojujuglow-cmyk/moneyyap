@@ -27,6 +27,21 @@ export const colors = {
   blueWash: '#EEF1FF',
 } as const;
 
+export const reportCategoryColors = [
+  '#6C5CE7',
+  '#FF6B35',
+  '#00A8E8',
+  '#F7B801',
+  '#E83F6F',
+  '#00B894',
+  '#8E44AD',
+  '#FF8C42',
+  '#2D7DD2',
+  '#A3CB38',
+  '#F15BB5',
+  '#00B4D8',
+] as const;
+
 export const amountColor = (amount: number) => amount > 0 ? colors.income : amount < 0 ? colors.expense : colors.neutralAmount;
 
 export const typography = {

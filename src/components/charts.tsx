@@ -51,7 +51,7 @@ export function CashFlowChart({ data, width, height = 220 }: { data: MonthlyPoin
   );
 }
 
-export function DonutChart({ segments, size = 132, selectedIndex = null, onSegmentPress }: { segments: { amount: number; color: string }[]; size?: number; selectedIndex?: number | null; onSegmentPress?: (index: number) => void }) {
+export function DonutChart({ segments, size = 132, selectedIndex = null, onSegmentPress }: { segments: { amount: number; color: string; label?: string }[]; size?: number; selectedIndex?: number | null; onSegmentPress?: (index: number) => void }) {
   const stroke = Math.max(16, Math.round(size * 0.105));
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -62,7 +62,7 @@ export function DonutChart({ segments, size = 132, selectedIndex = null, onSegme
       {segments.map((segment, index) => {
         const length = (segment.amount / total) * circumference;
         const offset = -segments.slice(0, index).reduce((sum, item) => sum + (item.amount / total) * circumference, 0);
-        return <Circle key={`${segment.color}-${index}`} cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={segment.color} strokeWidth={selectedIndex === index ? stroke + 4 : stroke} strokeDasharray={`${Math.max(0, length - 3)} ${circumference}`} strokeDashoffset={offset} strokeLinecap="round" opacity={selectedIndex === null || selectedIndex === index ? 1 : 0.42} transform={`rotate(-90 ${size / 2} ${size / 2})`} onPress={onSegmentPress ? () => onSegmentPress(index) : undefined} />;
+        return <Circle key={`${segment.color}-${index}`} accessible={Boolean(onSegmentPress)} accessibilityLabel={segment.label ? `${segment.label}, ${Math.round(segment.amount / total * 100)} percent` : undefined} cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={segment.color} strokeWidth={selectedIndex === index ? stroke + 4 : stroke} strokeDasharray={`${Math.max(0, length - 3)} ${circumference}`} strokeDashoffset={offset} strokeLinecap="round" opacity={selectedIndex === null || selectedIndex === index ? 1 : 0.42} transform={`rotate(-90 ${size / 2} ${size / 2})`} onPress={onSegmentPress ? () => onSegmentPress(index) : undefined} />;
       })}
     </Svg>
   );

@@ -6,7 +6,7 @@ const source = await readFile('src/services/analytics.ts', 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const module = { exports: {} };
 new Function('exports', 'module', compiled)(module.exports, module);
-const { accountBalancesAsOf, cashFlowTotals, categoryReportBreakdown, resolveAnalyticsDateRange, spaceReportBreakdown, spendingTrendSeries } = module.exports;
+const { accountBalancesAsOf, cashFlowTotals, categoryReportBreakdown, formatReportPercentage, resolveAnalyticsDateRange, spaceReportBreakdown, spendingTrendSeries } = module.exports;
 
 const transaction = (changes) => ({
   id: 'transaction', type: 'expense', financialEffect: 'expense', amount: 0, categoryId: null,
@@ -22,9 +22,9 @@ assert.deepEqual(
 );
 
 const mixed = [
-  transaction({ id: 'expense', amount: 500, categoryId: 'coffee', accountFromId: 'bank', spaceId: 'home' }),
+  transaction({ id: 'expense', amount: 500, categoryId: 'latte', accountFromId: 'bank', spaceId: 'home' }),
   transaction({ id: 'income', type: 'income', financialEffect: 'income', amount: 2000, categoryId: 'salary', accountToId: 'bank', spaceId: 'home' }),
-  transaction({ id: 'refund', type: 'refund', financialEffect: 'income', amount: 100, categoryId: 'coffee', accountToId: 'bank', spaceId: 'home' }),
+  transaction({ id: 'refund', type: 'refund', financialEffect: 'income', amount: 100, categoryId: 'latte', accountToId: 'bank', spaceId: 'home' }),
   transaction({ id: 'business-expense', amount: 300, categoryId: null, accountFromId: 'bank', spaceId: 'business' }),
   transaction({ id: 'business-income', type: 'income', financialEffect: 'income', amount: 900, categoryId: null, accountToId: 'bank', spaceId: 'business' }),
   transaction({ id: 'transfer', type: 'transfer', financialEffect: 'internal_transfer', amount: 800, accountFromId: 'bank', accountToId: 'cash', spaceId: 'home' }),
@@ -35,6 +35,7 @@ assert.deepEqual(cashFlowTotals(mixed), { spending: 700, income: 2900, netCashFl
 const categories = [
   { id: 'food', name: 'Food', type: 'expense', parentId: null, spaceId: 'home', color: '#FF4055', isArchived: false },
   { id: 'coffee', name: 'Coffee', type: 'expense', parentId: 'food', spaceId: 'home', color: '#F5A742', isArchived: false },
+  { id: 'latte', name: 'Latte', type: 'expense', parentId: 'coffee', spaceId: 'home', color: '#8E44AD', isArchived: false },
   { id: 'salary', name: 'Salary', type: 'income', parentId: null, spaceId: 'home', color: '#00C83A', isArchived: false },
 ];
 const homeTransactions = mixed.filter((item) => item.spaceId === 'home');
@@ -43,6 +44,10 @@ const incomeRows = categoryReportBreakdown(homeTransactions, categories, 'income
 assert.deepEqual(expenseRows.map((row) => [row.name, row.amount]), [['Food', 400]], 'refunds reduce their expense category');
 assert.deepEqual(incomeRows.map((row) => [row.name, row.amount]), [['Salary', 2000]], 'income categories remain separate');
 assert.deepEqual(categoryReportBreakdown(homeTransactions, categories, 'expense', 'home', 'food').map((row) => [row.name, row.amount]), [['Coffee', 400]], 'subcategory drill-down preserves nested totals');
+assert.deepEqual(categoryReportBreakdown(homeTransactions, categories, 'expense', 'home', 'coffee').map((row) => [row.name, row.amount]), [['Latte', 400]], 'deeper category levels preserve the hierarchy and count transactions once');
+assert.equal(formatReportPercentage(1, 500), '<1%', 'small report percentages remain visible');
+assert.equal(formatReportPercentage(24, 500), '4.8%', 'single-digit percentages retain one decimal place');
+assert.equal(formatReportPercentage(250, 500), '50%', 'large percentages remain compact');
 
 const spaces = [
   { id: 'home', name: 'Paita Fam', color: '#00B77A', icon: 'home', sortOrder: 0, isArchived: false },

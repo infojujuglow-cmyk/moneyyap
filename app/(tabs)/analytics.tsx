@@ -15,6 +15,7 @@ import {
   accountBalancesAsOf,
   analyticsTotals,
   categoryReportBreakdown,
+  formatReportPercentage,
   payeeBreakdownForTransactions,
   resolveAnalyticsDateRange,
   spaceReportBreakdown,
@@ -26,8 +27,8 @@ import {
   type CategoryReportItem,
   type SpaceReportItem,
 } from '@/services/analytics';
-import { colors, formatCompactPeso, formatPeso, radii, spacing } from '@/theme';
-import type { Account, CategoryType, Space, Transaction } from '@/types/finance';
+import { colors, formatCompactPeso, formatPeso, radii, reportCategoryColors, spacing, typography } from '@/theme';
+import type { Account, Category, CategoryType, Space, Transaction } from '@/types/finance';
 
 type Palette = { background: string; card: string; elevated: string; border: string; text: string; muted: string };
 
@@ -50,36 +51,94 @@ function ReportCard({ children, palette, style }: React.PropsWithChildren<{ pale
   return <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border }, style]}>{children}</View>;
 }
 
-function Drilldown({ title, transactions, palette, onClose }: { title: string; transactions: Transaction[]; palette: Palette; onClose: () => void }) {
-  return <ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>UNDERLYING TRANSACTIONS</AppText><AppText variant="h3" style={{ color: palette.text }}>{title}</AppText></View><Pressable accessibilityLabel="Close transaction drill-down" onPress={onClose}><Ionicons name="close-circle" size={25} color={palette.muted} /></Pressable></View>{transactions.map((transaction, index) => {
+function Drilldown({ title, transactions, palette, accounts = [], categories = [], onClose }: { title: string; transactions: Transaction[]; palette: Palette; accounts?: Account[]; categories?: Category[]; onClose: () => void }) {
+  const accountMap = new Map(accounts.map((account) => [account.id, account]));
+  const categoryMap = new Map(categories.map((category) => [category.id, category]));
+  const categoryPath = (categoryId: string | null) => {
+    const names: string[] = [];
+    let current = categoryId ? categoryMap.get(categoryId) : undefined;
+    const visited = new Set<string>();
+    while (current && !visited.has(current.id)) { visited.add(current.id); names.unshift(current.name); current = current.parentId ? categoryMap.get(current.parentId) : undefined; }
+    return names.join(' › ');
+  };
+  return <ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>UNDERLYING TRANSACTIONS</AppText><AppText variant="h3" style={{ color: palette.text }}>{title}</AppText><AppText variant="caption" style={{ color: palette.muted }}>{transactions.length} {transactions.length === 1 ? 'transaction' : 'transactions'}</AppText></View><Pressable accessibilityLabel="Close transaction drill-down" onPress={onClose}><Ionicons name="close-circle" size={25} color={palette.muted} /></Pressable></View>{transactions.map((transaction, index) => {
     const incoming = transaction.financialEffect === 'income';
     const outgoing = transaction.financialEffect === 'expense';
     const amountColor = transaction.type === 'refund' || incoming ? colors.income : outgoing ? colors.expense : palette.background === '#11151B' ? palette.text : colors.neutralAmount;
-    return <Pressable key={transaction.id} onPress={() => router.push(`/transaction/${transaction.id}`)} style={({ pressed }) => [styles.drillRow, index > 0 && { borderTopWidth: 1, borderTopColor: palette.border }, pressed && styles.pressed]}><View style={[styles.accountMark, { backgroundColor: `${amountColor}18` }]}><Ionicons name={transaction.type === 'transfer' ? 'swap-horizontal-outline' : incoming || transaction.type === 'refund' ? 'arrow-down-outline' : 'arrow-up-outline'} size={19} color={amountColor} /></View><View style={styles.breakdownName}><AppText variant="bodyMedium" style={{ color: palette.text }}>{transaction.counterpartyName ?? transaction.merchant ?? transaction.type.replaceAll('_', ' ')}</AppText><AppText variant="caption" style={{ color: palette.muted }}>{new Date(transaction.transactionDate).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} · {transaction.type.replaceAll('_', ' ')}</AppText></View><AppText variant="bodyMedium" style={{ color: amountColor }}>{outgoing ? '−' : incoming ? '+' : ''}{formatPeso(transaction.amount)}</AppText><Ionicons name="chevron-forward" size={17} color={palette.muted} /></Pressable>;
+    const accountId = outgoing ? transaction.accountFromId : incoming ? transaction.accountToId : transaction.accountFromId ?? transaction.accountToId;
+    const account = accountId ? accountMap.get(accountId) : undefined;
+    const category = categoryPath(transaction.categoryId);
+    const detail = [account?.name, category].filter(Boolean).join(' · ');
+    return <Pressable key={transaction.id} onPress={() => router.push(`/transaction/${transaction.id}`)} style={({ pressed }) => [styles.drillRow, index > 0 && { borderTopWidth: 1, borderTopColor: palette.border }, pressed && styles.pressed]}><View style={[styles.accountMark, { backgroundColor: `${amountColor}18` }]}><Ionicons name={transaction.type === 'transfer' ? 'swap-horizontal-outline' : incoming || transaction.type === 'refund' ? 'arrow-down-outline' : 'arrow-up-outline'} size={19} color={amountColor} /></View><View style={styles.breakdownName}><AppText variant="bodyMedium" numberOfLines={1} style={{ color: palette.text }}>{transaction.counterpartyName ?? transaction.merchant ?? transaction.notes ?? transaction.type.replaceAll('_', ' ')}</AppText><AppText variant="caption" style={{ color: palette.muted }}>{new Date(transaction.transactionDate).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}{detail ? ` · ${detail}` : ''}</AppText></View><AppText variant="bodyMedium" style={{ color: amountColor }}>{outgoing ? '−' : incoming ? '+' : ''}{formatPeso(transaction.amount)}</AppText><Ionicons name="chevron-forward" size={17} color={palette.muted} /></Pressable>;
   })}</ReportCard>;
 }
 
-function CategoryReport({ type, transactions, categories, spaceId, palette }: { type: CategoryType; transactions: Transaction[]; categories: Parameters<typeof categoryReportBreakdown>[1]; spaceId: string | null; palette: Palette }) {
+const blendHex = (color: string, target: string, ratio: number) => {
+  const normalize = (value: string) => value.replace('#', '').padEnd(6, '0').slice(0, 6);
+  const source = normalize(color);
+  const destination = normalize(target);
+  const channel = (offset: number) => Math.round(parseInt(source.slice(offset, offset + 2), 16) * (1 - ratio) + parseInt(destination.slice(offset, offset + 2), 16) * ratio).toString(16).padStart(2, '0');
+  return `#${channel(0)}${channel(2)}${channel(4)}`;
+};
+
+function CategoryReport({ type, transactions, categories, accounts, spaceId, palette, desktop, viewportWidth }: { type: CategoryType; transactions: Transaction[]; categories: Category[]; accounts: Account[]; spaceId: string | null; palette: Palette; desktop: boolean; viewportWidth: number }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<CategoryReportItem | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string>(reportCategoryColors[0]);
+  const [chartParent, setChartParent] = useState<CategoryReportItem | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const rows = useMemo(() => categoryReportBreakdown(transactions, categories, type, spaceId), [categories, spaceId, transactions, type]);
   const total = rows.reduce((sum, row) => sum + row.amount, 0);
-  const selectedIndex = selected ? rows.findIndex((row) => row.id === selected.id) : null;
+  const rootColors = useMemo(() => new Map(rows.map((row, index) => [row.id, row.id === '__uncategorized__' ? '#8B95A1' : reportCategoryColors[index % reportCategoryColors.length]])), [rows]);
+  const chartRows = useMemo(() => chartParent ? categoryReportBreakdown(transactions, categories, type, spaceId, chartParent.id) : rows, [categories, chartParent, rows, spaceId, transactions, type]);
+  const chartColors = chartRows.map((row, index) => chartParent ? blendHex(rootColors.get(chartParent.id) ?? selectedColor, index % 2 ? '#FFFFFF' : '#111827', Math.min(0.16 + index * 0.06, 0.42)) : rootColors.get(row.id) ?? row.color);
+  const chartTotal = chartRows.reduce((sum, row) => sum + row.amount, 0);
+  const selectedIndex = selected ? chartRows.findIndex((row) => row.id === selected.id) : null;
   const transactionById = useMemo(() => new Map(transactions.map((transaction) => [transaction.id, transaction])), [transactions]);
   const selectedTransactions = selected?.transactionIds.map((id) => transactionById.get(id)).filter(Boolean) as Transaction[] | undefined;
   const toggle = (id: string) => setExpanded((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const choose = (row: CategoryReportItem, color: string) => { setSelected(row); setSelectedColor(color); };
+  const matchingTransactionCount = new Set(rows.flatMap((row) => row.transactionIds)).size;
+  const largest = rows[0]!;
+  const visibleRows = rows.filter((row, index) => showAll || index < 7 || expanded.has(row.id) || selected?.id === row.id);
+  const donutSize = desktop ? 320 : Math.max(180, Math.min(250, viewportWidth - spacing.xl * 2 - spacing.lg * 2));
+
+  const renderRows = (items: CategoryReportItem[], depth = 0, parentAmount = total, rootColor?: string): React.ReactNode => items.map((row, index) => {
+    const color = depth === 0 ? rootColors.get(row.id) ?? row.color : blendHex(rootColor ?? row.color, index % 2 ? '#FFFFFF' : '#111827', Math.min(0.16 + depth * 0.08 + index * 0.04, 0.46));
+    const children = row.hasChildren ? categoryReportBreakdown(transactions, categories, type, spaceId, row.id) : [];
+    const isExpanded = expanded.has(row.id);
+    const percentage = formatReportPercentage(row.amount, parentAmount);
+    return <View key={row.id} style={depth > 0 ? [styles.nestedGroup, { marginLeft: Math.min(depth, 3) * spacing.lg, borderLeftColor: `${rootColor ?? color}42` }] : undefined}>
+      <Pressable accessibilityRole="button" accessibilityState={{ selected: selected?.id === row.id, expanded: row.hasChildren ? isExpanded : undefined }} onPress={() => choose(row, color)} style={({ hovered, pressed }) => [styles.categoryRow, depth > 0 && { backgroundColor: palette.elevated }, selected?.id === row.id && { backgroundColor: `${color}16` }, (hovered || pressed) && styles.pressed]}>
+        <View style={[styles.categoryColorMark, { backgroundColor: color }]} />
+        <View style={styles.categoryRowBody}>
+          <View style={styles.categoryRowTop}><AppText variant="bodyMedium" numberOfLines={1} style={[styles.categoryName, { color: palette.text }]}>{row.name}</AppText><AppText variant="bodyMedium" numberOfLines={1} adjustsFontSizeToFit style={{ color: type === 'income' ? colors.income : colors.expense }}>{formatPeso(row.amount)}</AppText><AppText variant="caption" style={[styles.categoryPercent, { color: palette.muted }]}>{percentage}</AppText>{row.hasChildren && <Pressable accessibilityLabel={`${isExpanded ? 'Collapse' : 'Expand'} ${row.name}`} hitSlop={10} onPress={(event) => { event.stopPropagation(); toggle(row.id); }} style={styles.chevronButton}><Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={17} color={palette.muted} /></Pressable>}</View>
+          <View style={[styles.categoryProgressTrack, { backgroundColor: palette.elevated }]}><View style={[styles.categoryProgressFill, { width: `${Math.max(2, Math.min(100, row.amount / Math.max(parentAmount, 1) * 100))}%`, backgroundColor: color }]} /></View>
+        </View>
+      </Pressable>
+      {isExpanded && children.length > 0 && <View style={styles.childrenList}>{renderRows(children, depth + 1, row.amount, rootColor ?? color)}</View>}
+    </View>;
+  });
+
   if (!rows.length) return <ReportCard palette={palette}><ReportEmpty icon="pie-chart-outline" title={`No ${type} activity`} body={`No ${type} transactions match the current filters.`} palette={palette} /></ReportCard>;
   return <View style={styles.reportStack}>
-    <ReportCard palette={palette} style={styles.donutCard}>
-      <View style={styles.donutArea}><DonutChart size={220} segments={rows.map((row) => ({ amount: row.amount, color: row.color }))} selectedIndex={selectedIndex !== null && selectedIndex >= 0 ? selectedIndex : null} onSegmentPress={(index) => setSelected(rows[index] ?? null)} /><View pointerEvents="none" style={styles.donutCenter}><AppText variant="eyebrow" style={{ color: palette.muted }}>TOTAL {type.toUpperCase()}</AppText><AppText variant="h2" style={{ color: type === 'income' ? colors.income : colors.expense }}>{formatCompactPeso(total)}</AppText></View></View>
-      <View style={styles.breakdown}><AppText variant="h3" style={{ color: palette.text }}>Breakdown</AppText>{rows.map((row) => {
-        const children = row.hasChildren ? categoryReportBreakdown(transactions, categories, type, spaceId, row.id) : [];
-        return <View key={row.id}><Pressable accessibilityRole="button" onPress={() => setSelected(row)} style={({ pressed }) => [styles.breakdownRow, selected?.id === row.id && { backgroundColor: palette.elevated }, pressed && styles.pressed]}><View style={[styles.colorDot, { backgroundColor: row.color }]} /><View style={styles.breakdownName}><AppText variant="bodyMedium" style={{ color: palette.text }}>{row.name}</AppText><AppText variant="caption" style={{ color: palette.muted }}>{Math.round(row.amount / Math.max(total, 1) * 100)}%</AppText></View><AppText variant="bodyMedium" style={{ color: type === 'income' ? colors.income : colors.expense }}>{formatPeso(row.amount)}</AppText>{row.hasChildren && <Pressable accessibilityLabel={`${expanded.has(row.id) ? 'Collapse' : 'Expand'} ${row.name}`} hitSlop={8} onPress={(event) => { event.stopPropagation(); toggle(row.id); }}><Ionicons name={expanded.has(row.id) ? 'chevron-up' : 'chevron-down'} size={18} color={palette.muted} /></Pressable>}</Pressable>
-          {expanded.has(row.id) && children.map((child) => <Pressable key={child.id} onPress={() => setSelected(child)} style={({ pressed }) => [styles.childRow, pressed && styles.pressed]}><View style={[styles.childGuide, { backgroundColor: row.color }]} /><AppText style={[styles.breakdownName, { color: palette.muted }]}>{child.name}</AppText><AppText variant="caption" style={{ color: type === 'income' ? colors.income : colors.expense }}>{formatPeso(child.amount)} · {Math.round(child.amount / Math.max(row.amount, 1) * 100)}%</AppText></Pressable>)}
-        </View>;
-      })}</View>
+    <View style={styles.categorySummaryRow}>
+      <View style={[styles.categorySummaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}><View style={[styles.summaryIcon, { backgroundColor: type === 'income' ? colors.incomeWash : colors.expenseWash }]}><Ionicons name={type === 'income' ? 'arrow-down-outline' : 'arrow-up-outline'} size={17} color={type === 'income' ? colors.income : colors.expense} /></View><View style={styles.summaryCopy}><AppText variant="eyebrow" style={{ color: palette.muted }}>TOTAL {type.toUpperCase()}</AppText><AppText variant="h3" numberOfLines={1} adjustsFontSizeToFit style={{ color: type === 'income' ? colors.income : colors.expense }}>{formatPeso(total)}</AppText></View></View>
+      <View style={[styles.categorySummaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}><View style={[styles.summaryIcon, { backgroundColor: `${rootColors.get(largest.id) ?? largest.color}1F` }]}><Ionicons name="trophy-outline" size={17} color={rootColors.get(largest.id) ?? largest.color} /></View><View style={styles.summaryCopy}><AppText variant="eyebrow" style={{ color: palette.muted }}>LARGEST CATEGORY</AppText><AppText variant="bodyMedium" numberOfLines={1} style={{ color: palette.text }}>{largest.name}</AppText><AppText variant="caption" style={{ color: palette.muted }}>{formatReportPercentage(largest.amount, total)} of total</AppText></View></View>
+      <View style={[styles.categorySummaryCard, { backgroundColor: palette.card, borderColor: palette.border }]}><View style={[styles.summaryIcon, { backgroundColor: palette.elevated }]}><Ionicons name="receipt-outline" size={17} color={colors.blue} /></View><View style={styles.summaryCopy}><AppText variant="eyebrow" style={{ color: palette.muted }}>TRANSACTIONS</AppText><AppText variant="h3" style={{ color: palette.text }}>{matchingTransactionCount}</AppText></View></View>
+    </View>
+    <ReportCard palette={palette} style={styles.categoryReportCard}>
+      <View style={[styles.categoryColumns, !desktop && styles.categoryColumnsMobile]}>
+        <View style={[styles.categoryChartColumn, desktop ? styles.categoryChartColumnDesktop : styles.categoryChartColumnMobile]}>
+          <View style={styles.categoryChartHeading}>{chartParent ? <Pressable onPress={() => { setChartParent(null); setSelected(null); }} style={styles.backAction}><Ionicons name="arrow-back" size={16} color={colors.mintDeep} /><AppText variant="caption" style={{ color: colors.mintDeep }}>Back to all categories</AppText></Pressable> : <AppText variant="h3" style={{ color: palette.text }}>Category share</AppText>}<AppText variant="caption" numberOfLines={1} style={{ color: palette.muted }}>{chartParent?.name ?? `${rows.length} categories`}</AppText></View>
+          <View style={[styles.donutArea, { width: desktop ? 340 : donutSize, minHeight: desktop ? 340 : donutSize }]}><DonutChart size={donutSize} segments={chartRows.map((row, index) => ({ amount: row.amount, color: chartColors[index] ?? row.color, label: row.name }))} selectedIndex={selectedIndex !== null && selectedIndex >= 0 ? selectedIndex : null} onSegmentPress={(index) => { const row = chartRows[index]; if (row) choose(row, chartColors[index] ?? row.color); }} /><View pointerEvents="none" style={styles.donutCenter}><AppText variant="eyebrow" numberOfLines={1} style={{ color: palette.muted }}>{chartParent ? chartParent.name.toUpperCase() : `TOTAL ${type.toUpperCase()}`}</AppText><AppText variant="h2" numberOfLines={1} adjustsFontSizeToFit style={{ color: type === 'income' ? colors.income : colors.expense }}>{formatCompactPeso(chartTotal)}</AppText></View></View>
+          {selected && <View style={[styles.chartSelection, { backgroundColor: palette.elevated, borderColor: `${selectedColor}55` }]}><View style={[styles.colorDot, { backgroundColor: selectedColor }]} /><View style={styles.breakdownName}><AppText variant="bodyMedium" numberOfLines={1} style={{ color: palette.text }}>{selected.name}</AppText><AppText variant="caption" style={{ color: palette.muted }}>{formatPeso(selected.amount)} · {formatReportPercentage(selected.amount, chartTotal)}</AppText></View>{selected.hasChildren && <Pressable onPress={() => { setChartParent(selected); setExpanded((current) => new Set(current).add(selected.id)); setSelected(null); }} style={styles.chartDrillButton}><AppText variant="caption" style={{ color: colors.mintDeep }}>View subcategories</AppText><Ionicons name="arrow-forward" size={14} color={colors.mintDeep} /></Pressable>}</View>}
+          <View style={styles.compactLegend}>{chartRows.slice(0, 5).map((row, index) => <Pressable key={row.id} onPress={() => choose(row, chartColors[index] ?? row.color)} style={styles.legendItem}><View style={[styles.colorDot, { backgroundColor: chartColors[index] ?? row.color }]} /><AppText variant="caption" numberOfLines={1} style={[styles.legendLabel, { color: palette.muted }]}>{row.name}</AppText><AppText variant="caption" style={{ color: palette.text }}>{formatReportPercentage(row.amount, chartTotal)}</AppText></Pressable>)}</View>
+        </View>
+        <View style={styles.categoryBreakdownColumn}><View style={styles.breakdownHeading}><View><AppText variant="h3" style={{ color: palette.text }}>Category breakdown</AppText><AppText variant="caption" style={{ color: palette.muted }}>Tap a row for its transactions</AppText></View></View>{renderRows(visibleRows)}{rows.length > 7 && <Pressable onPress={() => setShowAll((current) => !current)} style={[styles.showCategoriesButton, { borderColor: palette.border, backgroundColor: palette.elevated }]}><AppText variant="bodyMedium" style={{ color: colors.mintDeep }}>{showAll ? 'Show Less' : `Show All Categories (${rows.length})`}</AppText><Ionicons name={showAll ? 'chevron-up' : 'chevron-down'} size={17} color={colors.mintDeep} /></Pressable>}</View>
+      </View>
     </ReportCard>
-    {selected && selectedTransactions?.length ? <Drilldown title={selected.name} transactions={selectedTransactions} palette={palette} onClose={() => setSelected(null)} /> : null}
+    {selected && selectedTransactions?.length ? <Drilldown title={selected.name} transactions={selectedTransactions} accounts={accounts} categories={categories} palette={palette} onClose={() => setSelected(null)} /> : null}
   </View>;
 }
 
@@ -164,7 +223,7 @@ export default function ReportsScreen() {
 
   const renderReport = () => {
     if (isLoading) return <ReportCard palette={palette}><View style={styles.loading}><ActivityIndicator color={colors.mintDark} /><AppText style={{ color: palette.muted }}>Loading your reports…</AppText></View></ReportCard>;
-    if (report === 'expenses' || report === 'income') return <View style={styles.reportStack}>{commonHeader}<CategoryReport type={report === 'income' ? 'income' : 'expense'} transactions={periodTransactions} categories={categories} spaceId={selectedSpaceId} palette={palette} /></View>;
+    if (report === 'expenses' || report === 'income') return <View style={styles.reportStack}>{commonHeader}<CategoryReport type={report === 'income' ? 'income' : 'expense'} transactions={periodTransactions} categories={categories} accounts={accounts} spaceId={selectedSpaceId} palette={palette} desktop={desktop} viewportWidth={width} /></View>;
     if (report === 'expenses_by_space' || report === 'income_by_space') return <View style={styles.reportStack}>{commonHeader}<SpaceReport key={report} type={report === 'income_by_space' ? 'income' : 'expense'} transactions={periodTransactions} spaces={spaces} palette={palette} /></View>;
     if (report === 'overview') return <View style={styles.reportStack}>{commonHeader}<View style={styles.metrics}><MetricCard label="INCOME" amount={totals.income} tone="income" icon="arrow-down" palette={palette} /><MetricCard label="EXPENSES" amount={totals.spending} tone="expense" icon="arrow-up" palette={palette} /><MetricCard label="NET CASH FLOW" amount={totals.netCashFlow} tone={totals.netCashFlow >= 0 ? 'income' : 'expense'} icon="swap-vertical" palette={palette} /><MetricCard label="NET WORTH" amount={netWorth} tone="neutral" icon="diamond-outline" palette={palette} /></View><ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>MONEY IN VS MONEY OUT</AppText><AppText variant="h3" style={{ color: palette.text }}>Cash flow</AppText></View><View style={styles.legendInline}><View style={[styles.colorDot, { backgroundColor: colors.income }]} /><AppText variant="caption" style={{ color: palette.muted }}>Income</AppText><View style={[styles.colorDot, { backgroundColor: colors.expense }]} /><AppText variant="caption" style={{ color: palette.muted }}>Expenses</AppText></View></View>{totals.income || totals.spending ? <CashFlowChart data={series} width={chartWidth} height={220} /> : <ReportEmpty icon="pulse-outline" title="No cash flow yet" body="Transactions in this period will appear here." palette={palette} />}</ReportCard><ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>AS OF {range.rangeLabel.toUpperCase()}</AppText><AppText variant="h3" style={{ color: palette.text }}>Account snapshot</AppText></View><Pressable onPress={() => selectReport('balances')}><AppText variant="bodyMedium" style={{ color: colors.mintDeep }}>View all</AppText></Pressable></View>{balanceRows.length ? <AccountRows accounts={balanceRows.slice(0, 5)} palette={palette} onSelect={(account) => router.push(`/account/${account.id}`)} /> : <ReportEmpty icon="wallet-outline" title="No accounts" body="Add an account to see balances here." palette={palette} />}</ReportCard></View>;
     if (report === 'cash_flow') return <View style={styles.reportStack}>{commonHeader}<View style={styles.metricsThree}><MetricCard label="INCOME" amount={totals.income} tone="income" icon="arrow-down" palette={palette} /><MetricCard label="EXPENSES" amount={totals.spending} tone="expense" icon="arrow-up" palette={palette} /><MetricCard label="NET" amount={totals.netCashFlow} tone={totals.netCashFlow >= 0 ? 'income' : 'expense'} icon="swap-vertical" palette={palette} /></View><ReportCard palette={palette}><View style={styles.legendInline}><View style={[styles.colorDot, { backgroundColor: colors.income }]} /><AppText variant="caption" style={{ color: palette.muted }}>Income</AppText><View style={[styles.colorDot, { backgroundColor: colors.expense }]} /><AppText variant="caption" style={{ color: palette.muted }}>Expenses</AppText></View>{totals.income || totals.spending ? <CashFlowChart data={series} width={chartWidth} height={270} /> : <ReportEmpty icon="pulse-outline" title="No cash flow data" body="Try another date range or add a transaction." palette={palette} />}</ReportCard></View>;
@@ -200,6 +259,37 @@ const styles = StyleSheet.create({
   metricCard: { flexGrow: 1, flexBasis: 150, minWidth: 145, borderWidth: 1, borderRadius: radii.lg, padding: spacing.lg, gap: spacing.sm },
   metricIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   legendInline: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
+  categorySummaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  categorySummaryCard: { flex: 1, flexBasis: 190, minWidth: 170, minHeight: 82, borderWidth: 1, borderRadius: radii.lg, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  summaryIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  summaryCopy: { flex: 1, minWidth: 0, gap: 2 },
+  categoryReportCard: { padding: spacing.lg },
+  categoryColumns: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xxl },
+  categoryColumnsMobile: { flexDirection: 'column', gap: spacing.xl },
+  categoryChartColumn: { minWidth: 0, alignItems: 'center', gap: spacing.md },
+  categoryChartColumnDesktop: { width: 340, flexBasis: 340, flexShrink: 0, position: 'sticky', top: spacing.lg, alignSelf: 'flex-start' } as never,
+  categoryChartColumnMobile: { width: '100%', flexBasis: 'auto' },
+  categoryChartHeading: { width: '100%', minHeight: 42, justifyContent: 'center', gap: 2 },
+  backAction: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 24 },
+  chartSelection: { width: '100%', minHeight: 52, borderWidth: 1, borderRadius: radii.md, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chartDrillButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 34, paddingLeft: spacing.sm },
+  compactLegend: { width: '100%', gap: spacing.xs },
+  legendItem: { minHeight: 28, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  legendLabel: { flex: 1, minWidth: 0 },
+  categoryBreakdownColumn: { flex: 1, width: '100%', minWidth: 0, gap: 3 },
+  breakdownHeading: { minHeight: 48, justifyContent: 'center', marginBottom: spacing.xs },
+  categoryRow: { minHeight: 54, borderRadius: radii.md, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  categoryColorMark: { width: 6, height: 32, borderRadius: 3 },
+  categoryRowBody: { flex: 1, minWidth: 0, gap: 7 },
+  categoryRowTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  categoryName: { flex: 1, minWidth: 0 },
+  categoryPercent: { width: 42, textAlign: 'right', fontFamily: typography.medium },
+  chevronButton: { width: 28, height: 28, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center' },
+  categoryProgressTrack: { width: '100%', height: 4, borderRadius: 2, overflow: 'hidden' },
+  categoryProgressFill: { height: 4, borderRadius: 2 },
+  nestedGroup: { borderLeftWidth: 1, paddingLeft: spacing.xs, marginTop: 2 },
+  childrenList: { gap: 2 },
+  showCategoriesButton: { minHeight: 44, marginTop: spacing.sm, borderWidth: 1, borderRadius: radii.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   donutCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxxl, flexWrap: 'wrap' },
   donutArea: { width: 240, minHeight: 240, alignItems: 'center', justifyContent: 'center' },
   donutCenter: { position: 'absolute', alignItems: 'center', gap: spacing.xs },
