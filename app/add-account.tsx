@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
   input: { minHeight: 54, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingHorizontal: spacing.lg, fontFamily: typography.regular, fontSize: 16, color: colors.ink },
   balanceField: { minHeight: 58, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingHorizontal: spacing.lg },
   peso: { color: colors.slate },
-  balanceInput: { flex: 1, fontFamily: typography.semibold, fontSize: 22, color: colors.ink, paddingLeft: spacing.sm },
+  balanceInput: { flex: 1, fontFamily: typography.semibold, fontSize: 22, color: colors.neutralAmount, paddingLeft: spacing.sm },
   note: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, backgroundColor: colors.mintWash, borderRadius: radii.md, padding: spacing.lg },
   noteText: { flex: 1, color: colors.mintDeep },
   error: { color: colors.danger },

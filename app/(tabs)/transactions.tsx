@@ -10,14 +10,23 @@ import { useFinance } from '@/context/FinanceContext';
 import { colors, radii, spacing, typography } from '@/theme';
 import type { TransactionType } from '@/types/finance';
 
-type Picker = 'type' | 'account' | 'category' | null;
+type Picker = 'account' | 'category' | null;
+
+const typeFilters: { value: TransactionType | null; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { value: null, label: 'All', icon: 'list-outline' },
+  { value: 'expense', label: 'Expense', icon: 'arrow-up-outline' },
+  { value: 'income', label: 'Income', icon: 'arrow-down-outline' },
+  { value: 'transfer', label: 'Internal Transfer', icon: 'swap-horizontal-outline' },
+  { value: 'credit_card_payment', label: 'Card Payment', icon: 'card-outline' },
+  { value: 'refund', label: 'Refund', icon: 'return-down-back-outline' },
+];
 
 export default function TransactionsScreen() {
   const { width } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 1024;
   const { transactions, accounts, categories, selectedSpaceId } = useFinance();
   const [query, setQuery] = useState('');
-  const [thisMonth, setThisMonth] = useState(true);
+  const [thisMonth, setThisMonth] = useState(false);
   const [forVerificationOnly, setForVerificationOnly] = useState(false);
   const [type, setType] = useState<TransactionType | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -48,19 +57,20 @@ export default function TransactionsScreen() {
   return (
     <Screen title="Transactions" subtitle={`${filtered.length} entries · everything in one place`} contentStyle={desktop ? styles.wideContent : undefined} right={desktop ? <Button label="Add transaction" icon="add" onPress={() => router.push('/manual-transaction')} /> : <Pressable onPress={() => router.push('/manual-transaction')}><IconCircle name="add" background={colors.mint} /></Pressable>}>
       <SpaceSelector />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeFilterScroll} contentContainerStyle={styles.typeFilterRow}>
+        {typeFilters.map((option) => <Chip key={option.value ?? 'all'} label={option.label} icon={option.icon} selected={type === option.value && !forVerificationOnly} onPress={() => { setType(option.value); setCategoryId(null); setForVerificationOnly(false); setPicker(null); }} />)}
+      </ScrollView>
       <View style={styles.search}><Ionicons name="search-outline" size={20} color={colors.slate} /><TextInput value={query} onChangeText={setQuery} placeholder="Search merchant, payer, notes, or message" placeholderTextColor={colors.slate} style={styles.input} />{query.length > 0 && <Pressable onPress={() => setQuery('')}><Ionicons name="close-circle" size={19} color={colors.slate} /></Pressable>}</View>
 
       <View style={[styles.filters, desktop && styles.desktopFilters]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
           <Chip label={thisMonth ? 'This month' : 'All time'} selected={thisMonth} icon="calendar-outline" onPress={() => setThisMonth((value) => !value)} />
           <Chip label={`For verification (${verificationCount})`} selected={forVerificationOnly} icon="help-circle-outline" onPress={() => { if (!forVerificationOnly) { setThisMonth(false); setType(null); setCategoryId(null); } setForVerificationOnly(!forVerificationOnly); setPicker(null); }} />
-          <Chip label={type ? type.replaceAll('_', ' ') : 'Type'} selected={Boolean(type)} icon="swap-vertical-outline" onPress={() => setPicker(picker === 'type' ? null : 'type')} />
           <Chip label={selectedAccount ?? 'Account'} selected={Boolean(accountId)} icon="wallet-outline" onPress={() => setPicker(picker === 'account' ? null : 'account')} />
-          <Chip label={selectedCategory ?? (filterCategoryType ? 'Category' : 'Choose type first')} selected={Boolean(categoryId)} icon="pricetag-outline" onPress={() => setPicker(filterCategoryType ? picker === 'category' ? null : 'category' : 'type')} />
+          <Chip label={selectedCategory ?? (filterCategoryType ? 'Category' : 'Choose type first')} selected={Boolean(categoryId)} icon="pricetag-outline" onPress={() => { if (filterCategoryType) setPicker(picker === 'category' ? null : 'category'); }} />
         </ScrollView>
         {picker && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.optionRow}>
-          <Chip label="All" selected={(picker === 'type' && !type) || (picker === 'account' && !accountId) || (picker === 'category' && !categoryId)} onPress={() => { if (picker === 'type') { setType(null); setCategoryId(null); } if (picker === 'account') setAccountId(null); if (picker === 'category') setCategoryId(null); }} />
-          {picker === 'type' && ([['expense', 'Expenses'], ['income', 'Income'], ['transfer', 'Internal transfers'], ['credit_card_payment', 'Card payments'], ['refund', 'Refunds']] as [TransactionType, string][]).map(([value, label]) => <Chip key={value} label={label} selected={type === value} onPress={() => { setType(value); setCategoryId(null); }} />)}
+          <Chip label="All" selected={(picker === 'account' && !accountId) || (picker === 'category' && !categoryId)} onPress={() => { if (picker === 'account') setAccountId(null); if (picker === 'category') setCategoryId(null); }} />
           {picker === 'account' && accounts.map((item) => <Chip key={item.id} label={item.name} selected={accountId === item.id} onPress={() => setAccountId(item.id)} />)}
           {picker === 'category' && filterCategoryType && categories.filter((item) => item.type === filterCategoryType && item.spaceId === selectedSpaceId && !item.isArchived).map((item) => <Chip key={item.id} label={item.name} selected={categoryId === item.id} onPress={() => setCategoryId(item.id)} />)}
         </ScrollView>}
@@ -73,6 +83,8 @@ export default function TransactionsScreen() {
 
 const styles = StyleSheet.create({
   wideContent: { maxWidth: 1240 },
+  typeFilterScroll: { flexGrow: 0, marginHorizontal: -spacing.xl },
+  typeFilterRow: { paddingHorizontal: spacing.xl, gap: spacing.sm, paddingVertical: spacing.sm },
   search: { minHeight: 52, borderRadius: radii.md, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg },
   input: { flex: 1, minHeight: 48, fontFamily: typography.regular, fontSize: 15, color: colors.ink },
   filters: { gap: spacing.md, marginHorizontal: -spacing.xl },

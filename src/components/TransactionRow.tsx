@@ -53,7 +53,7 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
       <AppText variant="caption" style={[styles.categoryCell, transaction.classificationReviewRequired && !category && styles.verificationText]} numberOfLines={1}>{categoryName}</AppText>
       <AppText variant="caption" style={styles.notesCell} numberOfLines={2}>{transaction.notes?.trim() || '—'}</AppText>
       <AppText variant="caption" style={styles.dateCell}>{new Date(transaction.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</AppText>
-      <View style={styles.amountWrap}><AppText variant="bodyMedium" style={{ color: direction === 'neutral' ? colors.slateDark : directionColor }}>{amountPrefix}{formatPeso(transaction.amount)}</AppText></View>
+      <View style={styles.amountWrap}><AppText variant="bodyMedium" style={{ color: direction === 'neutral' ? colors.neutralAmount : directionColor }}>{amountPrefix}{formatPeso(transaction.amount)}</AppText></View>
     </Pressable>
   );
   return (
@@ -65,7 +65,7 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
         <AppText variant="caption" style={[styles.meta, transaction.classificationReviewRequired && styles.verificationText]} numberOfLines={1}>{detail}</AppText>
       </View>
       <View style={styles.amountWrap}>
-        <AppText variant="bodyMedium" style={{ color: direction === 'neutral' ? colors.slateDark : directionColor }}>
+        <AppText variant="bodyMedium" style={{ color: direction === 'neutral' ? colors.neutralAmount : directionColor }}>
           {amountPrefix}{formatPeso(transaction.amount)}
         </AppText>
         <AppText variant="caption" style={styles.meta}>{new Date(transaction.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</AppText>

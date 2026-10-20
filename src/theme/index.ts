@@ -16,15 +16,18 @@ export const colors = {
   borderStrong: '#DDE1DD',
   danger: '#E35D6A',
   dangerWash: '#FFF0F1',
-  expense: '#C85363',
+  expense: '#FF4055',
   expenseWash: '#FDECEF',
-  income: '#18865E',
+  income: '#00C83A',
   incomeWash: '#E7F8EE',
+  neutralAmount: '#434A55',
   warning: '#F5A742',
   warningWash: '#FFF7E8',
   blue: '#5B7CFA',
   blueWash: '#EEF1FF',
 } as const;
+
+export const amountColor = (amount: number) => amount > 0 ? colors.income : amount < 0 ? colors.expense : colors.neutralAmount;
 
 export const typography = {
   regular: 'Geist_400Regular',

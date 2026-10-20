@@ -10,7 +10,7 @@ import { AppText, Avatar, Chip, IconCircle, SectionHeader, Surface } from '@/com
 import { useFinance } from '@/context/FinanceContext';
 import { useAuth } from '@/context/AuthContext';
 import { categoryTotals, monthToDateTotals, todayTotals, transactionsInSpace } from '@/services/analytics';
-import { colors, formatCompactPeso, formatPeso, radii, spacing } from '@/theme';
+import { amountColor, colors, formatCompactPeso, formatPeso, radii, spacing } from '@/theme';
 
 export default function HomeScreen() {
   const { width } = useWindowDimensions();
@@ -26,16 +26,14 @@ export default function HomeScreen() {
   const today = todayTotals(visibleTransactions);
   const month = monthToDateTotals(visibleTransactions);
   const topCategories = categoryTotals(visibleTransactions, categories, new Date(), selectedSpaceId).slice(0, 4);
-  const netIsPositive = today.netCashFlow >= 0;
-  const monthNetIsPositive = month.netCashFlow >= 0;
   const comparisonIsLower = (month.spendingChange ?? 0) <= 0;
   const formatNet = (amount: number, compact = false) => `${amount > 0 ? '+' : ''}${compact ? formatCompactPeso(amount) : formatPeso(amount)}`;
   const hero = <Surface style={[styles.hero, desktop && styles.desktopHero]}>
-    <View style={styles.heroTop}><View><AppText variant="caption" style={styles.heroLabel}>TODAY</AppText><AppText variant="display" style={styles.heroAmount}>{formatPeso(today.spending)}</AppText><AppText style={styles.heroDescription}>Spent today</AppText></View><IconCircle name="today-outline" size={38} background="#23303B" color={colors.mint} /></View>
+    <View style={styles.heroTop}><View><AppText variant="caption" style={styles.heroLabel}>TODAY</AppText><AppText variant="display" style={[styles.heroAmount, !today.spending && styles.heroNeutral]}>{formatPeso(today.spending)}</AppText><AppText style={styles.heroDescription}>Spent today</AppText></View><IconCircle name="today-outline" size={38} background="#23303B" color={colors.mint} /></View>
     <View style={styles.heroDivider} />
     <View style={styles.heroBottom}>
-      <View><AppText variant="caption" style={styles.heroLabel}>RECEIVED</AppText><AppText variant="h3" style={styles.heroValue}>{formatPeso(today.income)}</AppText></View>
-      <View style={styles.heroRight}><AppText variant="caption" style={styles.heroLabel}>NET CASH FLOW</AppText><AppText variant="h3" style={[styles.heroValue, netIsPositive ? styles.positiveValue : styles.negativeValue]}>{formatNet(today.netCashFlow)}</AppText></View>
+      <View><AppText variant="caption" style={styles.heroLabel}>RECEIVED</AppText><AppText variant="h3" style={[styles.heroValue, styles.heroIncome, !today.income && styles.heroNeutral]}>{formatPeso(today.income)}</AppText></View>
+      <View style={styles.heroRight}><AppText variant="caption" style={styles.heroLabel}>NET CASH FLOW</AppText><AppText variant="h3" style={[styles.heroValue, { color: today.netCashFlow === 0 ? colors.white : amountColor(today.netCashFlow) }]}>{formatNet(today.netCashFlow)}</AppText></View>
     </View>
     <AppText variant="caption" style={styles.transactionCount}>{today.transactionCount ? `${today.transactionCount} ${today.transactionCount === 1 ? 'transaction' : 'transactions'} today` : 'Nothing recorded yet today.'}</AppText>
   </Surface>;
@@ -48,9 +46,9 @@ export default function HomeScreen() {
     <SectionHeader title="This month" />
     <Surface style={styles.monthCard}>
       <View style={styles.monthMetrics}>
-        <View style={styles.monthMetric}><AppText variant="caption" style={styles.monthLabel}>SPENT</AppText><AppText variant="bodyMedium">{formatCompactPeso(month.spending)}</AppText></View>
-        <View style={styles.monthMetric}><AppText variant="caption" style={styles.monthLabel}>RECEIVED</AppText><AppText variant="bodyMedium">{formatCompactPeso(month.income)}</AppText></View>
-        <View style={[styles.monthMetric, styles.monthMetricLast]}><AppText variant="caption" style={styles.monthLabel}>NET</AppText><AppText variant="bodyMedium" style={monthNetIsPositive ? styles.monthPositive : styles.monthNegative}>{formatNet(month.netCashFlow, true)}</AppText></View>
+        <View style={styles.monthMetric}><AppText variant="caption" style={styles.monthLabel}>SPENT</AppText><AppText variant="bodyMedium" style={{ color: amountColor(-month.spending) }}>{formatCompactPeso(month.spending)}</AppText></View>
+        <View style={styles.monthMetric}><AppText variant="caption" style={styles.monthLabel}>RECEIVED</AppText><AppText variant="bodyMedium" style={{ color: amountColor(month.income) }}>{formatCompactPeso(month.income)}</AppText></View>
+        <View style={[styles.monthMetric, styles.monthMetricLast]}><AppText variant="caption" style={styles.monthLabel}>NET</AppText><AppText variant="bodyMedium" style={{ color: amountColor(month.netCashFlow) }}>{formatNet(month.netCashFlow, true)}</AppText></View>
       </View>
       {month.spendingChange !== null && month.comparisonLabel && <View style={[styles.monthComparison, comparisonIsLower ? styles.monthComparisonGood : styles.monthComparisonWarning]}><Ionicons name={comparisonIsLower ? 'arrow-down' : 'arrow-up'} size={13} color={comparisonIsLower ? colors.mintDeep : colors.danger} /><AppText variant="caption" style={{ color: comparisonIsLower ? colors.mintDeep : colors.danger }}>{Math.abs(month.spendingChange).toFixed(0)}% vs {month.comparisonLabel}</AppText></View>}
     </Surface>
@@ -86,14 +84,14 @@ const styles = StyleSheet.create({
   desktopHero: { padding: spacing.xxxl, minHeight: 246, justifyContent: 'space-between' },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   heroLabel: { color: '#9BA7B2', letterSpacing: 0.75 },
-  heroAmount: { color: colors.white, marginTop: spacing.xs },
+  heroAmount: { color: colors.expense, marginTop: spacing.xs },
   heroDescription: { color: colors.mintMist, marginTop: 1 },
   heroDivider: { height: 1, backgroundColor: '#2A3540' },
   heroBottom: { flexDirection: 'row', justifyContent: 'space-between' },
   heroRight: { alignItems: 'flex-end' },
   heroValue: { color: colors.white, marginTop: 2 },
-  positiveValue: { color: colors.mint },
-  negativeValue: { color: '#F3AAB3' },
+  heroIncome: { color: colors.income },
+  heroNeutral: { color: colors.white },
   transactionCount: { color: '#9BA7B2', marginTop: spacing.xs },
   talkSection: { gap: spacing.md },
   desktopTalk: { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.xl },
@@ -105,8 +103,6 @@ const styles = StyleSheet.create({
   monthMetric: { flex: 1, gap: 2, borderRightWidth: 1, borderRightColor: colors.border, paddingRight: spacing.sm },
   monthMetricLast: { borderRightWidth: 0, paddingRight: 0, paddingLeft: spacing.sm },
   monthLabel: { color: colors.slate, letterSpacing: 0.6 },
-  monthPositive: { color: colors.mintDeep },
-  monthNegative: { color: colors.danger },
   monthComparison: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 5 },
   monthComparisonGood: { backgroundColor: colors.mintWash },
   monthComparisonWarning: { backgroundColor: colors.dangerWash },

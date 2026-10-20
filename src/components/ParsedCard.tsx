@@ -14,7 +14,7 @@ export function ParsedCard({ draft, status = 'draft', saving = false, onConfirm,
   const space = spaces.find((item) => item.id === draft.spaceId);
   const parent = categories.find((item) => item.id === category?.parentId);
   const label = draft.financialEffect === 'internal_transfer' ? 'internal transfer' : (draft.financialEffect ?? draft.transactionType).replaceAll('_', ' ');
-  const amountTone = draft.financialEffect === 'income' ? styles.incomeAmount : draft.financialEffect === 'expense' ? styles.expenseAmount : undefined;
+  const amountTone = draft.financialEffect === 'income' ? styles.incomeAmount : draft.financialEffect === 'expense' ? styles.expenseAmount : styles.neutralAmount;
   const clarification = draft.clarification ?? (draft.ownershipStatus === 'unknown'
     ? { type: 'ownership' as const, question: draft.confirmationQuestion ?? 'Is this a payment or one of your own accounts?' }
     : draft.candidateAccountIds?.length
@@ -92,6 +92,7 @@ const styles = StyleSheet.create({
   savedAmount: { fontSize: 32, lineHeight: 38, letterSpacing: -1 },
   expenseAmount: { color: colors.expense },
   incomeAmount: { color: colors.income },
+  neutralAmount: { color: colors.neutralAmount },
   merchant: { color: colors.slate, textTransform: 'capitalize' },
   confidence: { color: colors.mintDeep, backgroundColor: colors.mintWash, borderRadius: radii.pill, paddingHorizontal: spacing.sm, paddingVertical: 5 },
   details: { gap: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.lg },

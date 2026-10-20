@@ -17,10 +17,10 @@ export function SpendLineChart({ data, width, height = 150 }: { data: MonthlyPoi
   return (
     <View>
       <Svg width={width} height={height}>
-        <Defs><LinearGradient id="mintArea" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={colors.mint} stopOpacity="0.26" /><Stop offset="1" stopColor={colors.mint} stopOpacity="0" /></LinearGradient></Defs>
-        <Path d={area} fill="url(#mintArea)" />
-        <Path d={line} fill="none" stroke={colors.mintDark} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-        {points.map((point, index) => <Circle key={data[index]?.label} cx={point.x} cy={point.y} r={index === points.length - 1 ? 4.5 : 2.5} fill={colors.white} stroke={colors.mintDark} strokeWidth={index === points.length - 1 ? 3 : 2} />)}
+        <Defs><LinearGradient id="expenseArea" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={colors.expense} stopOpacity="0.2" /><Stop offset="1" stopColor={colors.expense} stopOpacity="0" /></LinearGradient></Defs>
+        <Path d={area} fill="url(#expenseArea)" />
+        <Path d={line} fill="none" stroke={colors.expense} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {points.map((point, index) => <Circle key={data[index]?.label} cx={point.x} cy={point.y} r={index === points.length - 1 ? 4.5 : 2.5} fill={colors.white} stroke={colors.expense} strokeWidth={index === points.length - 1 ? 3 : 2} />)}
       </Svg>
       <View style={styles.axis}>{data.map((item, index) => <View key={`${item.label}-${index}`} style={styles.axisSlot}>{item.showLabel !== false && <AppText variant="caption" numberOfLines={1} style={styles.axisLabel}>{item.label}</AppText>}</View>)}</View>
     </View>
@@ -44,8 +44,9 @@ export function DonutChart({ segments, size = 132 }: { segments: { amount: numbe
   );
 }
 
-export function BarList({ items, total }: { items: { id: string; name: string; color: string; amount: number }[]; total: number }) {
-  return <View style={styles.barList}>{items.map((item) => <View key={item.id} style={styles.barItem}><View style={styles.barHeader}><View style={styles.barLabel}><View style={[styles.dot, { backgroundColor: item.color }]} /><AppText variant="bodyMedium">{item.name}</AppText></View><AppText variant="bodyMedium">{formatCompactPeso(item.amount)}</AppText></View><View style={styles.track}><View style={[styles.fill, { width: `${Math.max(3, (item.amount / Math.max(total, 1)) * 100)}%`, backgroundColor: item.color }]} /></View></View>)}</View>;
+export function BarList({ items, total, tone = 'expense' }: { items: { id: string; name: string; color: string; amount: number }[]; total: number; tone?: 'income' | 'expense' | 'neutral' }) {
+  const amountTone = tone === 'income' ? colors.income : tone === 'expense' ? colors.expense : colors.neutralAmount;
+  return <View style={styles.barList}>{items.map((item) => <View key={item.id} style={styles.barItem}><View style={styles.barHeader}><View style={styles.barLabel}><View style={[styles.dot, { backgroundColor: item.color }]} /><AppText variant="bodyMedium">{item.name}</AppText></View><AppText variant="bodyMedium" style={{ color: amountTone }}>{formatCompactPeso(item.amount)}</AppText></View><View style={styles.track}><View style={[styles.fill, { width: `${Math.max(3, (item.amount / Math.max(total, 1)) * 100)}%`, backgroundColor: item.color }]} /></View></View>)}</View>;
 }
 
 const styles = StyleSheet.create({

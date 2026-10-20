@@ -4,7 +4,7 @@ import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'reac
 import { Screen } from '@/components/Screen';
 import { AppText, Button, IconCircle, SectionHeader, Surface } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
-import { colors, formatPeso, spacing } from '@/theme';
+import { amountColor, colors, formatPeso, spacing } from '@/theme';
 import type { Account } from '@/types/finance';
 
 export default function AccountsScreen() {
@@ -15,9 +15,10 @@ export default function AccountsScreen() {
   const assets = activeAccounts.filter((item) => item.type !== 'credit_card');
   const liabilities = activeAccounts.filter((item) => item.type === 'credit_card');
   const removed = accounts.filter((item) => !item.isActive);
+  const netBalance = activeAccounts.reduce((sum, item) => sum + item.balance, 0);
   return (
     <Screen title="Accounts" subtitle="What you have, and what you owe" right={<Pressable onPress={() => router.back()}><IconCircle name="close" /></Pressable>}>
-      <Surface style={styles.netCard}><AppText variant="eyebrow" style={styles.netLabel}>NET ACROSS ACTIVE ACCOUNTS</AppText><AppText variant="display">{formatPeso(activeAccounts.reduce((sum, item) => sum + item.balance, 0))}</AppText><AppText style={styles.muted}>Updated from your latest transactions</AppText></Surface>
+      <Surface style={styles.netCard}><AppText variant="eyebrow" style={styles.netLabel}>NET ACROSS ACTIVE ACCOUNTS</AppText><AppText variant="display" style={{ color: amountColor(netBalance) }}>{formatPeso(netBalance)}</AppText><AppText style={styles.muted}>Updated from your latest transactions</AppText></Surface>
       <AccountGroup title="Your money" accounts={assets} transactions={transactions} desktop={desktop} />
       {liabilities.length > 0 && <AccountGroup title="Credit cards" accounts={liabilities} transactions={transactions} desktop={desktop} />}
       {removed.length > 0 && <AccountGroup title="Removed accounts" accounts={removed} transactions={transactions} desktop={desktop} />}
@@ -61,9 +62,9 @@ function AccountCard({ account, transactions, desktop }: { account: Account; tra
         <View style={styles.accountTop}>
           <View style={[styles.institution, { backgroundColor: `${account.accent}18` }]}><Ionicons name={account.type === 'credit_card' ? 'card-outline' : account.type === 'cash' ? 'cash-outline' : account.type === 'ewallet' ? 'phone-portrait-outline' : 'business-outline'} size={22} color={account.accent} /></View>
           <View style={styles.accountCopy}><AppText variant="bodyMedium">{account.name}</AppText><AppText variant="caption" style={styles.muted}>{account.isActive ? `${account.type === 'credit_card' ? 'Credit card · liability' : account.type.replace('_', ' ')} · ${account.ownerUserId ? 'Private' : 'Shared'}` : 'Removed · history preserved'}</AppText></View>
-          <View style={styles.balance}><AppText variant="h3" style={account.type === 'credit_card' ? styles.owed : undefined}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText><Ionicons name="chevron-forward" size={16} color={colors.slate} /></View>
+          <View style={styles.balance}><AppText variant="h3" style={{ color: amountColor(account.type === 'credit_card' ? -Math.abs(account.balance) : account.balance) }}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText><Ionicons name="chevron-forward" size={16} color={colors.slate} /></View>
         </View>
-        {recent && <View style={styles.activity}><AppText variant="caption" style={styles.muted}>Latest activity</AppText><AppText variant="caption">{recent.merchant ?? recent.type.replaceAll('_', ' ')} · {formatPeso(recent.amount)}</AppText></View>}
+        {recent && <View style={styles.activity}><AppText variant="caption" style={styles.muted}>Latest activity</AppText><AppText variant="caption">{recent.merchant ?? recent.type.replaceAll('_', ' ')} · <AppText variant="caption" style={{ color: recent.financialEffect === 'income' ? colors.income : recent.financialEffect === 'expense' ? colors.expense : colors.neutralAmount }}>{formatPeso(recent.amount)}</AppText></AppText></View>}
       </Surface>
     </Pressable>
   );
@@ -84,7 +85,6 @@ const styles = StyleSheet.create({
   institution: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   accountCopy: { flex: 1, gap: 2 },
   balance: { alignItems: 'flex-end' },
-  owed: { color: colors.slateDark },
   activity: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md, flexDirection: 'row', justifyContent: 'space-between' },
   archived: { opacity: 0.65 },
 });

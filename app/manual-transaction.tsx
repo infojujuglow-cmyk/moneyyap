@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
   amountBlock: { alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.lg },
   amountField: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   currency: { fontFamily: typography.semibold, fontSize: 30, color: colors.slate, marginRight: 4 },
-  amountInput: { minWidth: 90, maxWidth: '80%', fontFamily: typography.bold, fontSize: 54, lineHeight: 64, letterSpacing: -2.2, color: colors.ink, textAlign: 'center', outlineStyle: 'none' } as never,
+  amountInput: { minWidth: 90, maxWidth: '80%', fontFamily: typography.bold, fontSize: 54, lineHeight: 64, letterSpacing: -2.2, color: colors.neutralAmount, textAlign: 'center', outlineStyle: 'none' } as never,
   field: { gap: spacing.sm },
   textInput: { minHeight: 56, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontFamily: typography.regular, fontSize: 16, color: colors.ink, outlineStyle: 'none' } as never,
   counterpartyInputWrap: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingHorizontal: spacing.md }, counterpartyInput: { flex: 1, minHeight: 54, fontFamily: typography.regular, fontSize: 16, color: colors.ink, outlineStyle: 'none' } as never,

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, type ViewStyle, View } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useFinance } from '@/context/FinanceContext';
-import { colors, formatPeso, radii, spacing, typography } from '@/theme';
+import { amountColor, colors, formatPeso, radii, spacing, typography } from '@/theme';
 import type { Account } from '@/types/finance';
 import { AppText, Avatar, Wordmark } from './ui';
 
@@ -83,7 +83,7 @@ export function DesktopSidebar() {
                 return <Pressable key={account.id} accessibilityRole="link" accessibilityState={{ selected }} onPress={() => router.push(`/account/${account.id}`)} style={({ hovered, pressed }) => [styles.accountItem, interactionTransition, selected && styles.accountSelected, (hovered || pressed) && !selected && styles.navHover]}>
                   {selected && <View style={styles.activeIndicator} />}
                   <View style={[styles.accountIcon, { backgroundColor: `${account.accent}14` }]}><Ionicons name={accountIcon(account)} size={14} color={account.accent} /></View>
-                  <View style={styles.accountCopy}><AppText variant="caption" numberOfLines={1} style={[styles.accountName, selected && styles.selectedText]}>{account.name}</AppText><AppText variant="caption" numberOfLines={1} style={styles.accountBalance}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText></View>
+                  <View style={styles.accountCopy}><AppText variant="caption" numberOfLines={1} style={[styles.accountName, selected && styles.selectedText]}>{account.name}</AppText><AppText variant="caption" numberOfLines={1} style={[styles.accountBalance, { color: amountColor(account.type === 'credit_card' ? -Math.abs(account.balance) : account.balance) }]}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText></View>
                 </Pressable>;
               })}</View>}
             </View>;
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
   accountIcon: { width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   accountCopy: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   accountName: { flex: 1, minWidth: 0, color: colors.slateDark, fontFamily: typography.medium, fontSize: 12, lineHeight: 16 },
-  accountBalance: { flexShrink: 0, maxWidth: 88, color: colors.slate, fontFamily: typography.medium, fontSize: 10.5, lineHeight: 14, textAlign: 'right' },
+  accountBalance: { flexShrink: 0, maxWidth: 94, color: colors.neutralAmount, fontFamily: typography.semibold, fontSize: 11.5, lineHeight: 16, textAlign: 'right' },
   accountDivider: { height: 1, backgroundColor: colors.border, marginHorizontal: spacing.sm, marginTop: spacing.xs },
   manageAccounts: { minHeight: 32, paddingHorizontal: spacing.sm, borderRadius: radii.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   manageAccountsText: { color: colors.slate, fontSize: 11 },

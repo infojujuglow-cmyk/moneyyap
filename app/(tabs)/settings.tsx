@@ -6,7 +6,7 @@ import { Screen } from '@/components/Screen';
 import { AppText, Avatar, Button, IconCircle, SectionHeader, Surface } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { useFinance } from '@/context/FinanceContext';
-import { colors, formatPeso, spacing } from '@/theme';
+import { amountColor, colors, formatPeso, spacing } from '@/theme';
 
 export default function SettingsScreen() {
   const { session, signOut } = useAuth();
@@ -25,7 +25,7 @@ export default function SettingsScreen() {
 
       <View style={styles.section}><SectionHeader title="Money & workspace" /><Surface style={styles.menu}>
         <SettingsRow icon="layers-outline" title="Workspaces" detail={currentWorkspace ? `${currentWorkspace.name} · ${availableWorkspaces.length} available` : 'Add or switch workspace'} onPress={() => router.push('/workspaces' as never)} />
-        <SettingsRow icon="wallet-outline" title="Accounts" detail={`${activeAccounts.length} active · ${formatPeso(assetBalance)}`} onPress={() => router.push('/accounts')} />
+        <SettingsRow icon="wallet-outline" title="Accounts" detail={<>{activeAccounts.length} active · <AppText variant="caption" style={{ color: amountColor(assetBalance) }}>{formatPeso(assetBalance)}</AppText></>} onPress={() => router.push('/accounts')} />
         <SettingsRow icon="grid-outline" title="Spaces" detail={`${spaces.filter((item) => !item.isArchived).length} active · organize life your way`} onPress={() => router.push('/spaces')} />
         <SettingsRow icon="people-outline" title="Members" detail={members.map((item) => item.fullName).join(' & ')} onPress={() => router.push('/household')} />
         <SettingsRow icon="pricetag-outline" title="Categories" detail="Shared or specific to a Space" onPress={() => router.push('/categories')} />
@@ -49,7 +49,7 @@ export default function SettingsScreen() {
   );
 }
 
-function SettingsRow({ icon, title, detail, onPress, right }: { icon: keyof typeof Ionicons.glyphMap; title: string; detail: string; onPress?: () => void; right?: React.ReactNode }) {
+function SettingsRow({ icon, title, detail, onPress, right }: { icon: keyof typeof Ionicons.glyphMap; title: string; detail: React.ReactNode; onPress?: () => void; right?: React.ReactNode }) {
   const content = <><IconCircle name={icon} size={40} /><View style={styles.flex}><AppText variant="bodyMedium">{title}</AppText><AppText variant="caption" style={styles.muted}>{detail}</AppText></View>{right ?? <Ionicons name="chevron-forward" size={18} color={colors.slate} />}</>;
   if (right) return <View style={styles.row}>{content}</View>;
   return <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>{content}</Pressable>;
