@@ -5,21 +5,13 @@ import { Platform, Pressable, ScrollView, StyleSheet, TextInput, useWindowDimens
 import { Screen } from '@/components/Screen';
 import { SpaceSelector } from '@/components/SpaceSelector';
 import { TransactionRow } from '@/components/TransactionRow';
+import { TransactionTypeFilters } from '@/components/TransactionTypeFilters';
 import { AppText, Button, Chip, EmptyState, IconCircle, Surface } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
 import { colors, radii, spacing, typography } from '@/theme';
 import type { TransactionType } from '@/types/finance';
 
 type Picker = 'account' | 'category' | null;
-
-const typeFilters: { value: TransactionType | null; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { value: null, label: 'All', icon: 'list-outline' },
-  { value: 'expense', label: 'Expense', icon: 'arrow-up-outline' },
-  { value: 'income', label: 'Income', icon: 'arrow-down-outline' },
-  { value: 'transfer', label: 'Internal Transfer', icon: 'swap-horizontal-outline' },
-  { value: 'credit_card_payment', label: 'Card Payment', icon: 'card-outline' },
-  { value: 'refund', label: 'Refund', icon: 'return-down-back-outline' },
-];
 
 export default function TransactionsScreen() {
   const { width } = useWindowDimensions();
@@ -57,9 +49,7 @@ export default function TransactionsScreen() {
   return (
     <Screen title="Transactions" subtitle={`${filtered.length} entries · everything in one place`} contentStyle={desktop ? styles.wideContent : undefined} right={desktop ? <Button label="Add transaction" icon="add" onPress={() => router.push('/manual-transaction')} /> : <Pressable onPress={() => router.push('/manual-transaction')}><IconCircle name="add" background={colors.mint} /></Pressable>}>
       <SpaceSelector />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeFilterScroll} contentContainerStyle={styles.typeFilterRow}>
-        {typeFilters.map((option) => <Chip key={option.value ?? 'all'} label={option.label} icon={option.icon} selected={type === option.value && !forVerificationOnly} onPress={() => { setType(option.value); setCategoryId(null); setForVerificationOnly(false); setPicker(null); }} />)}
-      </ScrollView>
+      <TransactionTypeFilters value={type} forVerificationOnly={forVerificationOnly} onChange={(nextType) => { setType(nextType); setCategoryId(null); setForVerificationOnly(false); setPicker(null); }} />
       <View style={styles.search}><Ionicons name="search-outline" size={20} color={colors.slate} /><TextInput value={query} onChangeText={setQuery} placeholder="Search merchant, payer, notes, or message" placeholderTextColor={colors.slate} style={styles.input} />{query.length > 0 && <Pressable onPress={() => setQuery('')}><Ionicons name="close-circle" size={19} color={colors.slate} /></Pressable>}</View>
 
       <View style={[styles.filters, desktop && styles.desktopFilters]}>
@@ -83,8 +73,6 @@ export default function TransactionsScreen() {
 
 const styles = StyleSheet.create({
   wideContent: { maxWidth: 1240 },
-  typeFilterScroll: { flexGrow: 0, marginHorizontal: -spacing.xl },
-  typeFilterRow: { paddingHorizontal: spacing.xl, gap: spacing.sm, paddingVertical: spacing.sm },
   search: { minHeight: 52, borderRadius: radii.md, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg },
   input: { flex: 1, minHeight: 48, fontFamily: typography.regular, fontSize: 15, color: colors.ink },
   filters: { gap: spacing.md, marginHorizontal: -spacing.xl },
