@@ -114,7 +114,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const movesMoney = type === 'transfer' || type === 'credit_card_payment';
-  const spaceAccounts = useMemo(() => activeAccounts.filter((account) => !account.spaceId || account.spaceId === spaceId), [activeAccounts, spaceId]);
+  const spaceAccounts = useMemo(() => activeAccounts.filter((account) => !account.spaceId || account.spaceId === spaceId || account.id === accountId || account.id === destinationId), [accountId, activeAccounts, destinationId, spaceId]);
   const sourceAccounts = useMemo(() => spaceAccounts.filter((account) => type !== 'credit_card_payment' || account.type !== 'credit_card'), [spaceAccounts, type]);
   const rankedAccounts = useMemo(() => rankByHistory(sourceAccounts, transactions, spaceId, merchant, (transaction) => type === 'income' || type === 'refund' ? transaction.accountToId : transaction.accountFromId, (account) => account.id), [merchant, sourceAccounts, spaceId, transactions, type]);
   const effectiveAccountId = accountId && sourceAccounts.some((account) => account.id === accountId) ? accountId : rankedAccounts[0]?.id ?? null;
@@ -196,8 +196,10 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
     setCategoryId(null); setCounterpartyId(null); setMatchedCounterpartyName(null);
   };
   const selectSpace = (nextSpaceId: string) => {
+    if (effectiveAccountId) setAccountId(effectiveAccountId);
+    if (movesMoney && effectiveDestinationId) setDestinationId(effectiveDestinationId);
     setSpaceId(nextSpaceId); setSelectedSpaceId(nextSpaceId);
-    setAccountId(null); setDestinationId(null); setCategoryId(null);
+    setCategoryId(null);
   };
 
   const submit = async () => {
