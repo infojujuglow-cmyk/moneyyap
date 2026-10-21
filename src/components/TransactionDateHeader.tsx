@@ -7,17 +7,19 @@ const webStickyStyle = Platform.select<ViewStyle>({
   default: {},
 });
 
-export function TransactionDateHeader({ transactionDate }: { transactionDate: string }) {
+export function TransactionDateHeader({ transactionDate, compact = false }: { transactionDate: string; compact?: boolean }) {
   const date = new Date(transactionDate);
   const today = new Date();
-  const dayLabel = date.toDateString() === today.toDateString()
-    ? 'Today'
-    : date.toLocaleDateString('en-PH', { weekday: 'long' });
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const isToday = date.toDateString() === today.toDateString();
+  const isYesterday = date.toDateString() === yesterday.toDateString();
+  const dayLabel = isToday ? 'Today' : date.toLocaleDateString('en-PH', { weekday: 'long' });
+  const compactDateLabel = isToday ? 'Today' : isYesterday ? 'Yesterday' : date.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: date.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
   const dateLabel = date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
-    <View style={[styles.header, webStickyStyle]}>
-      <AppText variant="eyebrow" style={styles.label}>{dayLabel} · {dateLabel}</AppText>
+    <View style={[styles.header, compact && styles.compactHeader, !compact && webStickyStyle]}>
+      <AppText variant="eyebrow" style={[styles.label, compact && styles.compactLabel]}>{compact ? compactDateLabel : `${dayLabel} · ${dateLabel}`}</AppText>
     </View>
   );
 }
@@ -34,4 +36,6 @@ const styles = StyleSheet.create({
     borderColor: colors.borderStrong,
   },
   label: { color: colors.slateDark, letterSpacing: 0.65 },
+  compactHeader: { minHeight: 34, marginHorizontal: 0, paddingHorizontal: 0, backgroundColor: colors.softWhite, borderTopWidth: 0, borderBottomColor: colors.border, borderBottomWidth: 1 },
+  compactLabel: { color: colors.ink, letterSpacing: 0.45 },
 });

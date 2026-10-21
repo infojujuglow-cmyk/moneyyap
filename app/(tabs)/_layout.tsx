@@ -26,7 +26,7 @@ export default function TabLayout() {
         tabBarItemStyle: styles.tabItem,
         tabBarIcon: ({ focused, color }) => {
           const pair = icons[route.name as keyof typeof icons] ?? icons.index;
-          if (route.name === 'add') return <View style={styles.addButton}><Ionicons name="add" size={31} color={colors.ink} /></View>;
+          if (route.name === 'add') return <View style={styles.addButton}><Ionicons name="chatbubble-ellipses" size={25} color={colors.ink} /><Ionicons name="sparkles" size={12} color={colors.mintDeep} style={styles.talkSparkle} /></View>;
           return <Ionicons name={pair[focused ? 0 : 1]} size={22} color={color} />;
         },
       })}
@@ -44,4 +44,5 @@ const styles = StyleSheet.create({
   tabBar: { position: 'absolute', height: 84, paddingTop: 8, paddingBottom: 14, backgroundColor: colors.white, borderTopWidth: 1, borderTopColor: colors.border, ...shadows.soft },
   tabItem: { paddingTop: 4 },
   addButton: { width: 58, height: 58, marginTop: -27, borderRadius: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.mint, borderWidth: 5, borderColor: colors.softWhite, ...shadows.lift },
+  talkSparkle: { position: 'absolute', right: 6, top: 5 },
 });

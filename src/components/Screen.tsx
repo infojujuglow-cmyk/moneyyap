@@ -13,14 +13,15 @@ interface ScreenProps extends PropsWithChildren {
   backgroundColor?: string;
   titleColor?: string;
   subtitleColor?: string;
+  compactHeader?: boolean;
 }
 
-export function Screen({ children, title, subtitle, right, scroll = true, contentStyle, backgroundColor, titleColor, subtitleColor }: ScreenProps) {
+export function Screen({ children, title, subtitle, right, scroll = true, contentStyle, backgroundColor, titleColor, subtitleColor, compactHeader = false }: ScreenProps) {
   const { width } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 1024;
   const content = (
     <View style={[styles.content, desktop && styles.desktopContent, contentStyle]}>
-      {(title || right) && <View style={styles.header}><View style={styles.headerCopy}>{title && <AppText variant="h1" style={titleColor ? { color: titleColor } : undefined}>{title}</AppText>}{subtitle && <AppText style={[styles.subtitle, subtitleColor ? { color: subtitleColor } : undefined]}>{subtitle}</AppText>}</View>{right}</View>}
+      {(title || right) && <View style={[styles.header, compactHeader && !desktop && styles.compactHeader]}><View style={styles.headerCopy}>{title && <AppText variant={compactHeader && !desktop ? 'h2' : 'h1'} style={titleColor ? { color: titleColor } : undefined}>{title}</AppText>}{subtitle && <AppText variant={compactHeader && !desktop ? 'caption' : 'body'} style={[styles.subtitle, subtitleColor ? { color: subtitleColor } : undefined]}>{subtitle}</AppText>}</View>{right}</View>}
       {children}
     </View>
   );
@@ -38,6 +39,7 @@ const styles = StyleSheet.create({
   desktopScroll: { paddingBottom: spacing.huge },
   desktopContent: { width: '100%', maxWidth: 960, alignSelf: 'center', paddingHorizontal: spacing.xxxl, paddingTop: spacing.xxl, gap: spacing.xxxl },
   header: { minHeight: 68, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: spacing.sm },
+  compactHeader: { minHeight: 54, paddingTop: spacing.xs },
   headerCopy: { gap: spacing.xs, flex: 1 },
   subtitle: { color: colors.slate },
 });
