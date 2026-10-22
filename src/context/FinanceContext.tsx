@@ -41,6 +41,7 @@ interface FinanceContextValue {
   archiveSpace: (id: string) => Promise<void>;
   addCategory: (category: Omit<Category, 'id' | 'isSystem'>) => Promise<string>;
   updateCategory: (id: string, changes: Partial<Category>) => Promise<void>;
+  moveCategoryToSpace: (id: string, spaceId: string, parentId?: string | null, changes?: Pick<Category, 'name' | 'icon' | 'color'>) => Promise<{ movedCategoryCount: number; movedTransactionCount: number }>;
   archiveCategory: (id: string) => Promise<void>;
   restoreCategory: (id: string) => Promise<void>;
   addWorkspaceMember: (email: string) => Promise<void>;
@@ -548,6 +549,25 @@ export function FinanceProvider({ children }: PropsWithChildren) {
     setCategories((items) => items.map((item) => item.id === id ? { ...item, ...changes } : item));
   }, []);
 
+  const moveCategoryToSpace = useCallback(async (id: string, spaceId: string, parentId: string | null = null, changes?: Pick<Category, 'name' | 'icon' | 'color'>) => {
+    if (!supabase) throw new Error('MoneyYap is not connected to Supabase.');
+    const { data, error } = await supabase.rpc('move_category_tree_to_space', {
+      category_id: id,
+      destination_space_id: spaceId,
+      destination_parent_id: parentId,
+      category_name: changes?.name ?? null,
+      category_icon: changes?.icon ?? null,
+      category_color: changes?.color ?? null,
+    });
+    if (error) throw error;
+    await refreshFinance();
+    const result = data as { moved_category_count?: number; moved_transaction_count?: number } | null;
+    return {
+      movedCategoryCount: Number(result?.moved_category_count ?? 0),
+      movedTransactionCount: Number(result?.moved_transaction_count ?? 0),
+    };
+  }, [refreshFinance]);
+
   const setCategoryTreeArchived = useCallback(async (id: string, isArchived: boolean) => {
     if (!supabase) throw new Error('MoneyYap is not connected to Supabase.');
     const ids = new Set([id]);
@@ -577,8 +597,8 @@ export function FinanceProvider({ children }: PropsWithChildren) {
     isLoading, refreshFinance, lastAdded, parseMessage, sendChatMessage, loadLatestConversation, clearConversationClarification,
     parseTransactionImage, saveDraft, rememberOwnAccountMapping, updateTransaction, setTransactionsReconciled, deleteTransaction,
     undoLastAdded: async () => { if (lastAdded) await deleteTransaction(lastAdded.id); }, addAccount, updateAccount, setAccountActive,
-    addSpace, updateSpace, archiveSpace, addCategory, updateCategory, archiveCategory, restoreCategory, addWorkspaceMember,
-  }), [accounts, addAccount, addCategory, addSpace, addWorkspaceMember, archiveCategory, archiveSpace, availableWorkspaces, categories, clearConversationClarification, counterparties, createWorkspace, deleteTransaction, isLoading, lastAdded, loadLatestConversation, members, parseMessage, parseTransactionImage, refreshFinance, rememberOwnAccountMapping, restoreCategory, saveDraft, selectedSpaceId, sendChatMessage, setAccountActive, setTransactionsReconciled, spaces, switchWorkspace, tags, transactions, updateAccount, updateCategory, updateSpace, updateTransaction, workspaceId]);
+    addSpace, updateSpace, archiveSpace, addCategory, updateCategory, moveCategoryToSpace, archiveCategory, restoreCategory, addWorkspaceMember,
+  }), [accounts, addAccount, addCategory, addSpace, addWorkspaceMember, archiveCategory, archiveSpace, availableWorkspaces, categories, clearConversationClarification, counterparties, createWorkspace, deleteTransaction, isLoading, lastAdded, loadLatestConversation, members, moveCategoryToSpace, parseMessage, parseTransactionImage, refreshFinance, rememberOwnAccountMapping, restoreCategory, saveDraft, selectedSpaceId, sendChatMessage, setAccountActive, setTransactionsReconciled, spaces, switchWorkspace, tags, transactions, updateAccount, updateCategory, updateSpace, updateTransaction, workspaceId]);
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 }

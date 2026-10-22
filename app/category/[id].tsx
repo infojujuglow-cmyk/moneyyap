@@ -15,22 +15,26 @@ const icons = ['pricetag-outline', 'restaurant-outline', 'home-outline', 'car-ou
 
 export default function CategoryDetailScreen() {
   const params = useLocalSearchParams<{ id: string; spaceId?: string; type?: string; parentId?: string }>();
-  const { categories, spaces, selectedSpaceId, addCategory, updateCategory, archiveCategory, restoreCategory } = useFinance();
+  const { categories, spaces, transactions, selectedSpaceId, setSelectedSpaceId, addCategory, updateCategory, moveCategoryToSpace, archiveCategory, restoreCategory } = useFinance();
   const existing = categories.find((item) => item.id === params.id);
   const isNew = params.id === 'new';
   const initialType: CategoryType = params.type === 'income' ? 'income' : 'expense';
   const initialSpaceId = existing?.spaceId ?? params.spaceId ?? selectedSpaceId ?? spaces.find((space) => !space.isArchived)?.id ?? null;
   const [name, setName] = useState(existing?.name ?? '');
   const [type, setType] = useState<CategoryType>(existing?.type ?? initialType);
-  const [spaceId] = useState<string | null>(initialSpaceId);
+  const [spaceId, setSpaceId] = useState<string | null>(initialSpaceId);
   const [parentId, setParentId] = useState<string | null>(existing?.parentId ?? params.parentId ?? null);
   const [icon, setIcon] = useState(existing?.icon ?? (type === 'income' ? 'wallet-outline' : 'pricetag-outline'));
   const [color, setColor] = useState(existing?.color ?? colors.mintDark);
   const [parentPickerOpen, setParentPickerOpen] = useState(false);
+  const [spacePickerOpen, setSpacePickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selectedSpace = spaces.find((space) => space.id === spaceId);
+  const activeSpaces = spaces.filter((space) => !space.isArchived);
+  const movingSpace = Boolean(existing && spaceId && spaceId !== existing.spaceId);
 
   const descendantIds = useMemo(() => {
     if (!existing) return new Set<string>();
@@ -44,6 +48,8 @@ export default function CategoryDetailScreen() {
     }
     return ids;
   }, [categories, existing]);
+  const categoryTreeIds = useMemo(() => new Set(existing ? [existing.id, ...descendantIds] : []), [descendantIds, existing]);
+  const affectedTransactionCount = useMemo(() => transactions.filter((transaction) => transaction.categoryId && categoryTreeIds.has(transaction.categoryId)).length, [categoryTreeIds, transactions]);
   const parents = useMemo(() => categories.filter((item) => !item.isArchived && item.type === type && item.spaceId === spaceId && item.id !== existing?.id && !descendantIds.has(item.id)), [categories, descendantIds, existing?.id, spaceId, type]);
   const categoryPath = (category: Category) => {
     const names = [category.name];
@@ -53,14 +59,20 @@ export default function CategoryDetailScreen() {
   };
   const selectedParent = parents.find((item) => item.id === parentId);
 
-  const save = async () => {
+  const save = async (rethrow = false) => {
     if (!name.trim() || !spaceId || saving) return;
     setSaving(true); setError(null);
     try {
       if (isNew) await addCategory({ name: name.trim(), type, spaceId, parentId, icon, color, sortOrder: categories.filter((item) => item.spaceId === spaceId && item.type === type && item.parentId === parentId).length, isArchived: false });
-      else if (existing) await updateCategory(existing.id, { name: name.trim(), parentId, icon, color });
+      else if (existing && movingSpace) {
+        await moveCategoryToSpace(existing.id, spaceId, parentId, { name: name.trim(), icon, color });
+        setSelectedSpaceId(spaceId);
+      } else if (existing) await updateCategory(existing.id, { name: name.trim(), parentId, icon, color });
       router.back();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to save this category.'); }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to save this category.');
+      if (rethrow) throw reason;
+    }
     finally { setSaving(false); }
   };
   const restore = async () => {
@@ -74,18 +86,21 @@ export default function CategoryDetailScreen() {
   return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <View style={styles.header}><Pressable onPress={() => router.back()} style={styles.close}><Ionicons name="close" size={23} color={colors.ink} /></Pressable><AppText variant="h3">{isNew ? 'New category' : 'Edit category'}</AppText><View style={styles.close} /></View>
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <View style={styles.scopeCard}><View style={[styles.scopeIcon, { backgroundColor: type === 'income' ? colors.incomeWash : colors.expenseWash }]}><Ionicons name={type === 'income' ? 'arrow-down' : 'arrow-up'} size={18} color={type === 'income' ? colors.income : colors.expense} /></View><View style={styles.flex}><AppText variant="bodyMedium">{type === 'income' ? 'Income' : 'Expense'} · {selectedSpace?.name ?? 'No Space'}</AppText><AppText variant="caption" style={styles.muted}>This scope stays fixed to protect transaction history.</AppText></View></View>
+      <View style={styles.scopeCard}><View style={[styles.scopeIcon, { backgroundColor: type === 'income' ? colors.incomeWash : colors.expenseWash }]}><Ionicons name={type === 'income' ? 'arrow-down' : 'arrow-up'} size={18} color={type === 'income' ? colors.income : colors.expense} /></View><View style={styles.flex}><AppText variant="bodyMedium">{type === 'income' ? 'Income' : 'Expense'} category</AppText><AppText variant="caption" style={styles.muted}>{movingSpace ? `Will move to ${selectedSpace?.name ?? 'the selected Space'}` : `${selectedSpace?.name ?? 'No Space'} · ${descendantIds.size} nested ${descendantIds.size === 1 ? 'category' : 'categories'}`}</AppText></View></View>
+      <SmartSelectField label="Space" value={selectedSpace?.name} placeholder="Choose a Space" onPress={() => setSpacePickerOpen(true)} hint={existing ? 'Moving a category also moves its subcategories and assigned transactions.' : 'Categories and transactions are organized independently per Space.'} />
       <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>Name</AppText><TextInput value={name} onChangeText={setName} placeholder={type === 'income' ? 'e.g. Service Revenue' : 'e.g. Office Supplies'} placeholderTextColor={colors.slate} style={styles.input} autoFocus={isNew} /></View>
       {isNew && <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>Type</AppText><View style={styles.wrap}><Chip label="Expense" selected={type === 'expense'} onPress={() => { setType('expense'); setParentId(null); }} /><Chip label="Income" selected={type === 'income'} onPress={() => { setType('income'); setParentId(null); }} /></View></View>}
       <SmartSelectField label="Parent · optional" value={selectedParent ? categoryPath(selectedParent) : null} placeholder="Top level category" onPress={() => setParentPickerOpen(true)} hint="Choose any category in the same Space and type" />
       <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>Icon</AppText><View style={styles.wrap}>{icons.map((item) => <Chip key={item} label={item.replace('-outline', '')} icon={item} selected={icon === item} onPress={() => setIcon(item)} />)}</View></View>
       <View style={styles.field}><AppText variant="eyebrow" style={styles.label}>Color</AppText><View style={styles.wrap}>{palette.map((item) => <Pressable accessibilityLabel={`Color ${item}`} key={item} onPress={() => setColor(item)} style={[styles.swatch, { backgroundColor: item }, color === item && styles.selected]} />)}</View></View>
       {error ? <AppText variant="caption" style={styles.error}>{error}</AppText> : null}
-      <Button label={isNew ? 'Create category' : 'Save changes'} icon="checkmark" loading={saving} disabled={!name.trim() || !spaceId} onPress={save} />
+      <Button label={isNew ? 'Create category' : movingSpace ? 'Move category tree' : 'Save changes'} icon={movingSpace ? 'swap-horizontal-outline' : 'checkmark'} loading={saving} disabled={!name.trim() || !spaceId} onPress={() => movingSpace ? setMoveOpen(true) : void save()} />
       {!isNew && existing?.isArchived && <Button label="Restore category tree" icon="refresh-outline" loading={saving} onPress={restore} />}
       {!isNew && !existing?.isArchived && <Button label="Archive category tree" variant="danger" icon="archive-outline" onPress={() => setArchiveOpen(true)} />}
     </ScrollView>
     <SmartSelectSheet visible={parentPickerOpen} title="Choose a parent" options={[{ id: '__root__', label: 'Top level category', detail: `Directly under ${selectedSpace?.name ?? 'this Space'}` }, ...parents.map((item) => ({ id: item.id, label: categoryPath(item), color: item.color }))]} selectedIds={[parentId ?? '__root__']} onClose={() => setParentPickerOpen(false)} onSelect={(id) => setParentId(id === '__root__' ? null : id)} searchPlaceholder="Search categories" />
+    <SmartSelectSheet visible={spacePickerOpen} title={existing ? 'Move to Space' : 'Choose a Space'} options={activeSpaces.map((space) => ({ id: space.id, label: space.name, color: space.color, detail: space.id === existing?.spaceId ? 'Current Space' : undefined }))} selectedIds={spaceId ? [spaceId] : []} onClose={() => setSpacePickerOpen(false)} onSelect={(id) => { setSpaceId(id); setParentId(id === existing?.spaceId ? existing.parentId : null); }} searchPlaceholder="Search Spaces" />
+    {existing && spaceId && <ConfirmActionDialog visible={moveOpen} title={`Move ${existing.name} to ${selectedSpace?.name ?? 'this Space'}?`} message={`This moves the category${descendantIds.size ? `, its ${descendantIds.size} nested ${descendantIds.size === 1 ? 'category' : 'categories'}` : ''}, and ${affectedTransactionCount} assigned ${affectedTransactionCount === 1 ? 'transaction' : 'transactions'} to ${selectedSpace?.name ?? 'the destination Space'}. Reports for both Spaces will update.`} confirmLabel="Move category tree" confirmVariant="primary" onClose={() => setMoveOpen(false)} onConfirm={() => save(true)} />}
     {existing && <ConfirmActionDialog visible={archiveOpen} title={`Archive ${existing.name}?`} message="It and its nested subcategories will be hidden from new entries. Existing transaction history stays intact." confirmLabel="Archive category tree" onClose={() => setArchiveOpen(false)} onConfirm={async () => { await archiveCategory(existing.id); router.back(); }} />}
   </KeyboardAvoidingView>;
 }
