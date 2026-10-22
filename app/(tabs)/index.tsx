@@ -29,11 +29,11 @@ export default function HomeScreen() {
   const comparisonIsLower = (month.spendingChange ?? 0) <= 0;
   const formatNet = (amount: number, compact = false) => `${amount > 0 ? '+' : ''}${compact ? formatCompactPeso(amount) : formatPeso(amount)}`;
   const hero = <Surface style={[styles.hero, desktop && styles.desktopHero]}>
-    <View style={styles.heroTop}><View><AppText variant="caption" style={styles.heroLabel}>TODAY</AppText><AppText variant="display" style={[styles.heroAmount, !today.spending && styles.heroNeutral]}>{formatPeso(today.spending)}</AppText><AppText style={styles.heroDescription}>Spent today</AppText></View><IconCircle name="today-outline" size={38} background="#23303B" color={colors.mint} /></View>
+    <View style={styles.heroTop}><View><AppText variant="caption" style={styles.heroLabel}>TODAY</AppText><AppText variant="display" style={[styles.heroAmount, { color: today.netCashFlow === 0 ? colors.white : amountColor(today.netCashFlow) }]}>{formatNet(today.netCashFlow)}</AppText><AppText style={styles.heroDescription}>Net cash flow</AppText></View><IconCircle name="today-outline" size={38} background="#23303B" color={colors.mint} /></View>
     <View style={styles.heroDivider} />
     <View style={styles.heroBottom}>
       <View><AppText variant="caption" style={styles.heroLabel}>RECEIVED</AppText><AppText variant="h3" style={[styles.heroValue, styles.heroIncome, !today.income && styles.heroNeutral]}>{formatPeso(today.income)}</AppText></View>
-      <View style={styles.heroRight}><AppText variant="caption" style={styles.heroLabel}>NET CASH FLOW</AppText><AppText variant="h3" style={[styles.heroValue, { color: today.netCashFlow === 0 ? colors.white : amountColor(today.netCashFlow) }]}>{formatNet(today.netCashFlow)}</AppText></View>
+      <View style={styles.heroRight}><AppText variant="caption" style={styles.heroLabel}>SPENT TODAY</AppText><AppText variant="h3" style={[styles.heroValue, { color: today.spending === 0 ? colors.white : amountColor(-today.spending) }]}>{formatPeso(today.spending)}</AppText></View>
     </View>
     <AppText variant="caption" style={styles.transactionCount}>{today.transactionCount ? `${today.transactionCount} ${today.transactionCount === 1 ? 'transaction' : 'transactions'} today` : 'Nothing recorded yet today.'}</AppText>
   </Surface>;
