@@ -1,16 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams, usePathname } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useFinance } from '@/context/FinanceContext';
 import { colors, radii, shadows, spacing } from '@/theme';
 
 export function DesktopQuickActions() {
   const pathname = usePathname();
-  const params = useLocalSearchParams<{ id?: string }>();
   const { accounts } = useFinance();
   const isTalkScreen = pathname === '/add' || pathname === '/(tabs)/add';
   const isManualTransactionScreen = pathname === '/manual-transaction';
-  const account = pathname.startsWith('/account/') ? accounts.find((item) => item.id === params.id && item.isActive) : null;
+  const accountPathMatch = pathname.match(/^\/account\/([^/]+)\/?$/);
+  const accountId = accountPathMatch?.[1] ? decodeURIComponent(accountPathMatch[1]) : null;
+  const account = accountId ? accounts.find((item) => item.id === accountId && item.isActive) : null;
   const addTransaction = () => router.push(account
     ? { pathname: '/manual-transaction', params: { accountId: account.id, ...(account.spaceId ? { spaceId: account.spaceId } : {}) } }
     : '/manual-transaction');

@@ -31,7 +31,20 @@ const railLabels: Record<PaymentRail, string> = {
 
 const rails = Object.keys(railLabels) as PaymentRail[];
 const normalize = (value?: string | null) => value?.trim().toLocaleLowerCase().normalize('NFKD').replace(/[^a-z0-9]/g, '') ?? '';
-const accountDetail = (account: Account) => [account.institution, account.type.replaceAll('_', ' ')].filter(Boolean).join(' · ');
+const groupAccountOptions = (ranked: Account[], suggestedId?: string): SmartSelectOption[] => {
+  const institutions = [...new Set(ranked.map((account) => account.institution?.trim() || 'Other accounts'))].sort((left, right) => left.localeCompare(right));
+  return institutions.flatMap((institution) => ranked
+    .filter((account) => (account.institution?.trim() || 'Other accounts') === institution)
+    .map((account) => ({
+      id: account.id,
+      label: account.name,
+      detail: account.type.replaceAll('_', ' '),
+      color: account.accent,
+      searchText: account.institution ?? '',
+      badge: account.id === suggestedId ? 'Suggested' : undefined,
+      group: institution,
+    })));
+};
 
 type CounterpartySuggestion = { id: string | null; name: string; count: number; lastUsedAt: string };
 
@@ -308,8 +321,8 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const suggestedAccountId = rankedAccounts[0]?.id;
   const suggestedDestinationId = rankedDestinations[0]?.id;
   const suggestedCategoryId = rankedCategories[0]?.id;
-  const accountOptions: SmartSelectOption[] = rankedAccounts.map((account) => ({ id: account.id, label: account.name, detail: accountDetail(account), color: account.accent, searchText: account.institution ?? '', badge: account.id === suggestedAccountId ? 'Suggested' : undefined }));
-  const destinationOptions: SmartSelectOption[] = rankedDestinations.map((account) => ({ id: account.id, label: account.name, detail: accountDetail(account), color: account.accent, searchText: account.institution ?? '', badge: account.id === suggestedDestinationId ? 'Suggested' : undefined }));
+  const accountOptions = groupAccountOptions(rankedAccounts, suggestedAccountId);
+  const destinationOptions = groupAccountOptions(rankedDestinations, suggestedDestinationId);
   const availableCategoryIds = new Set(availableCategories.map((category) => category.id));
   const suggestedCategoryAncestors = new Set<string>();
   let suggestedParentId = categories.find((category) => category.id === suggestedCategoryId)?.parentId;

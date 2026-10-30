@@ -13,6 +13,7 @@ export interface SmartSelectOption {
   searchText?: string;
   color?: string;
   badge?: string;
+  group?: string;
 }
 
 interface SmartSelectSheetProps {
@@ -95,12 +96,15 @@ export function SmartSelectSheet({ visible, title, options, selectedIds, onClose
               {query ? <Pressable hitSlop={8} onPress={() => setQuery('')}><Ionicons name="close-circle" size={18} color={colors.slate} /></Pressable> : null}
             </View>
             <ScrollView style={styles.list} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
-              {visibleOptions.map(({ option, depth, childCount }) => {
+              {visibleOptions.map(({ option, depth, childCount }, index) => {
                 const selected = selectedIds.includes(option.id);
                 const hasChildren = childCount > 0;
                 const expanded = expandedIds.has(option.id);
+                const showGroup = !hierarchical && Boolean(option.group) && (index === 0 || visibleOptions[index - 1]?.option.group !== option.group);
                 return (
-                  <Pressable key={option.id} accessibilityRole="button" accessibilityLabel={hasChildren && !searching ? `${option.label}, ${expanded ? 'collapse' : 'expand'} subcategories` : `Choose ${option.label}`} accessibilityState={hasChildren && !searching ? { expanded } : { selected }} onPress={() => hasChildren && !searching ? setExpandedIds((current) => { const next = new Set(current); if (next.has(option.id)) next.delete(option.id); else next.add(option.id); return next; }) : choose(option.id)} style={({ pressed }) => [styles.option, selected && styles.optionSelected, hierarchical && !searching && { paddingLeft: spacing.md + Math.min(depth, 4) * spacing.lg }, pressed && styles.pressed]}>
+                  <View key={option.id}>
+                  {showGroup && <View style={styles.groupHeader}><Ionicons name={option.group === 'Other accounts' ? 'wallet-outline' : 'business-outline'} size={14} color={colors.mintDeep} /><AppText variant="eyebrow" style={styles.groupLabel}>{option.group}</AppText></View>}
+                  <Pressable accessibilityRole="button" accessibilityLabel={hasChildren && !searching ? `${option.label}, ${expanded ? 'collapse' : 'expand'} subcategories` : `Choose ${option.label}`} accessibilityState={hasChildren && !searching ? { expanded } : { selected }} onPress={() => hasChildren && !searching ? setExpandedIds((current) => { const next = new Set(current); if (next.has(option.id)) next.delete(option.id); else next.add(option.id); return next; }) : choose(option.id)} style={({ pressed }) => [styles.option, selected && styles.optionSelected, hierarchical && !searching && { paddingLeft: spacing.md + Math.min(depth, 4) * spacing.lg }, pressed && styles.pressed]}>
                     <View style={[styles.dot, { backgroundColor: option.color ?? colors.mintWash }]} />
                     <View style={styles.optionCopy}>
                       <View style={styles.optionTitleRow}><AppText variant="bodyMedium" numberOfLines={1} style={styles.optionTitle}>{option.label}</AppText>{option.badge ? <AppText variant="caption" style={styles.badge}>{option.badge}</AppText> : null}</View>
@@ -108,6 +112,7 @@ export function SmartSelectSheet({ visible, title, options, selectedIds, onClose
                     </View>
                     {hasChildren && !searching ? <View style={styles.parentActions}><Pressable accessibilityRole="button" accessibilityLabel={`Choose ${option.label} directly`} onPress={(event) => { event.stopPropagation(); choose(option.id); }} style={styles.chooseParent}><AppText variant="caption" style={styles.chooseParentText}>{selected ? 'Selected' : 'Choose'}</AppText></Pressable><Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.slate} /></View> : selected ? <Ionicons name={multiple ? 'checkmark-circle' : 'checkmark'} size={20} color={colors.mintDeep} /> : null}
                   </Pressable>
+                  </View>
                 );
               })}
               {!visibleOptions.length && <View style={styles.empty}><Ionicons name="search-outline" size={26} color={colors.slate} /><AppText style={styles.optionDetail}>{emptyText}</AppText></View>}
@@ -141,6 +146,8 @@ const styles = StyleSheet.create({
   list: { flexShrink: 1 },
   listContent: { gap: spacing.xs, paddingBottom: spacing.sm },
   option: { minHeight: 58, borderRadius: radii.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  groupHeader: { minHeight: 34, marginTop: spacing.sm, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  groupLabel: { color: colors.slateDark },
   optionSelected: { backgroundColor: colors.mintWash },
   dot: { width: 34, height: 34, borderRadius: 12 },
   optionCopy: { flex: 1, minWidth: 0, gap: 2 },
