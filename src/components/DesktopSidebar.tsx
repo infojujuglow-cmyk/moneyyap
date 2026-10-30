@@ -91,7 +91,7 @@ export function DesktopSidebar() {
               {!collapsed && <View style={styles.institutionAccounts}>{institutionAccounts.map((account) => {
                 const selected = pathname === `/account/${account.id}`;
                 const reconciliation = accountReconciliationSummary(transactions, account.id);
-                const lastReconciled = reconciliation.lastReconciledAt ? new Date(reconciliation.lastReconciledAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : 'never';
+                const lastReconciled = reconciliation.lastReconciledAt ? new Date(reconciliation.lastReconciledAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never';
                 return <Pressable key={account.id} accessibilityRole="link" accessibilityLabel={`${account.name}, ${reconciliation.fullyReconciled ? 'fully reconciled' : 'not fully reconciled'}, last reconciled ${lastReconciled}`} accessibilityState={{ selected }} onPress={() => router.push(`/account/${account.id}`)} style={({ hovered, pressed }) => [styles.accountItem, interactionTransition, reconciliation.fullyReconciled && styles.accountFullyReconciled, selected && styles.accountSelected, (hovered || pressed) && !selected && styles.navHover]}>
                   {selected && <View style={styles.activeIndicator} />}
                   <View style={[styles.accountIcon, { backgroundColor: `${account.accent}14` }]}><Ionicons name={accountIcon(account)} size={14} color={account.accent} /></View>

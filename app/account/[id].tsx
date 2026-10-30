@@ -74,7 +74,7 @@ export default function AccountDetailScreen() {
   const reconciledCount = allActivity.filter((item) => isTransactionReconciled(item, account.id)).length;
   const reconciliationSummary = accountReconciliationSummary(transactions, account.id);
   const lastReconciledLabel = reconciliationSummary.lastReconciledAt
-    ? new Date(reconciliationSummary.lastReconciledAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+    ? new Date(reconciliationSummary.lastReconciledAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
     : 'Never';
   const visibleActivity = desktop ? activity : activity.slice(0, visibleCount);
   const transactionGroups = groupTransactionsByDate(visibleActivity);
