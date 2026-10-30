@@ -114,6 +114,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reconciliationBusyAccountId, setReconciliationBusyAccountId] = useState<string | null>(null);
+  const [unreconcileAccountId, setUnreconcileAccountId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const movesMoney = type === 'transfer' || type === 'credit_card_payment';
   const spaceAccounts = useMemo(() => activeAccounts.filter((account) => !account.spaceId || account.spaceId === spaceId || account.id === accountId || account.id === destinationId), [accountId, activeAccounts, destinationId, spaceId]);
@@ -191,7 +192,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
     setCategoryMustBeChosen(forVerification && nextMode === 'expense');
     setType(nextType); setForVerification(nextMode === 'verification'); setError(null);
     if (sameFinancialType) return;
-    const contextualAccountId = desktop && initialAccount?.isActive ? initialAccount.id : null;
+    const contextualAccountId = initialAccount?.isActive ? initialAccount.id : null;
     const contextIsCardDestination = nextType === 'credit_card_payment' && initialAccount?.type === 'credit_card';
     setAccountId(contextIsCardDestination ? null : contextualAccountId);
     setDestinationId(contextIsCardDestination ? contextualAccountId : null);
@@ -282,9 +283,19 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const reconciliationAccounts = editingTransaction ? transactionAccountIds(editingTransaction).map((id) => accounts.find((account) => account.id === id)).filter((account): account is Account => Boolean(account)) : [];
   const toggleReconciliation = async (reconciliationAccountId: string) => {
     if (!editingTransaction || reconciliationBusyAccountId) return;
+    if (isTransactionReconciled(editingTransaction, reconciliationAccountId)) {
+      setUnreconcileAccountId(reconciliationAccountId);
+      return;
+    }
     setReconciliationBusyAccountId(reconciliationAccountId); setError(null);
-    try { await setTransactionsReconciled([editingTransaction.id], !isTransactionReconciled(editingTransaction, reconciliationAccountId), reconciliationAccountId); }
+    try { await setTransactionsReconciled([editingTransaction.id], true, reconciliationAccountId); }
     catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to update reconciliation.'); }
+    finally { setReconciliationBusyAccountId(null); }
+  };
+  const confirmUnreconcile = async () => {
+    if (!editingTransaction || !unreconcileAccountId) return;
+    setReconciliationBusyAccountId(unreconcileAccountId); setError(null);
+    try { await setTransactionsReconciled([editingTransaction.id], false, unreconcileAccountId); }
     finally { setReconciliationBusyAccountId(null); }
   };
 
@@ -364,6 +375,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
       </KeyboardAvoidingView>
       <SmartSelectSheet visible={picker !== null} title={sheetConfig.title} options={sheetConfig.options} selectedIds={sheetConfig.ids} searchPlaceholder={sheetConfig.placeholder} multiple={picker === 'tags'} hierarchical={picker === 'category'} onClose={() => setPicker(null)} onSelect={handleSheetSelect} />
       {editingTransaction && <ConfirmActionDialog visible={deleteOpen} title="Delete this transaction?" message="It will be removed from your workspace history and analytics." confirmLabel="Delete transaction" onClose={() => setDeleteOpen(false)} onConfirm={async () => { await deleteTransaction(editingTransaction.id); router.back(); }} />}
+      {editingTransaction && <ConfirmActionDialog visible={Boolean(unreconcileAccountId)} title="Undo reconciliation?" message={`This will mark the ${accounts.find((account) => account.id === unreconcileAccountId)?.name ?? 'selected account'} side of this transaction as unreconciled. Only continue if you need to correct a confirmed reconciliation.`} confirmLabel="Mark unreconciled" onClose={() => setUnreconcileAccountId(null)} onConfirm={confirmUnreconcile} />}
     </View>
   );
 }

@@ -47,6 +47,7 @@ export default function TransactionsScreen() {
   const [reconciliationFilter, setReconciliationFilter] = useState<ReconciliationFilter>('all');
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [reconcilingId, setReconcilingId] = useState<string | null>(null);
+  const [unreconcileTransactionId, setUnreconcileTransactionId] = useState<string | null>(null);
   const [reconciliationError, setReconciliationError] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -77,8 +78,12 @@ export default function TransactionsScreen() {
   const toggleReconciled = async (id: string) => {
     const transaction = transactions.find((item) => item.id === id);
     if (!transaction || reconcilingId) return;
+    if (isTransactionReconciled(transaction)) {
+      setUnreconcileTransactionId(id);
+      return;
+    }
     setReconcilingId(id); setReconciliationError(null);
-    try { await setTransactionsReconciled([id], !isTransactionReconciled(transaction)); }
+    try { await setTransactionsReconciled([id], true); }
     catch (reason) { setReconciliationError(getErrorMessage(reason, 'Unable to update reconciliation.')); }
     finally { setReconcilingId(null); }
   };
@@ -116,7 +121,8 @@ export default function TransactionsScreen() {
       {!desktop && <SmartSelectSheet visible={picker === 'account'} title="Filter by account" options={[{ id: '__all__', label: 'All accounts', color: colors.mint }, ...relevantAccounts.map((account) => ({ id: account.id, label: account.name, detail: account.institution ?? account.type.replaceAll('_', ' '), color: account.accent }))]} selectedIds={[accountId ?? '__all__']} onClose={() => setPicker(null)} onSelect={(id) => setAccountId(id === '__all__' ? null : id)} searchPlaceholder="Search accounts" />}
       {!desktop && <SmartSelectSheet visible={picker === 'category'} title="Filter by category" options={[{ id: '__all__', label: 'All categories', color: colors.mint }, ...relevantCategories.map((category) => ({ id: category.id, label: category.name, parentId: category.parentId, color: category.color }))]} selectedIds={[categoryId ?? '__all__']} onClose={() => setPicker(null)} onSelect={(id) => setCategoryId(id === '__all__' ? null : id)} hierarchical searchPlaceholder="Search categories" />}
       {!desktop && <MobileTransactionActions visible={actionsOpen} matchingCount={unreconciledMatching.length} onClose={() => setActionsOpen(false)} onReconcile={() => { setActionsOpen(false); setReconcileOpen(true); }} />}
-      <ConfirmActionDialog visible={reconcileOpen} title={`Reconcile ${unreconciledMatching.length} transactions?`} message="This marks every matching transaction as reconciled for all of its linked accounts. You can still undo individual reconciliations later." confirmLabel="Mark reconciled" confirmVariant="primary" onClose={() => setReconcileOpen(false)} onConfirm={async () => { await setTransactionsReconciled(unreconciledMatching.map((item) => item.id), true); }} />
+      <ConfirmActionDialog visible={reconcileOpen} title={`Reconcile ${unreconciledMatching.length} transactions?`} message="This marks every matching transaction as reconciled for all of its linked accounts. Undoing a confirmed reconciliation later requires confirmation." confirmLabel="Mark reconciled" confirmVariant="primary" onClose={() => setReconcileOpen(false)} onConfirm={async () => { await setTransactionsReconciled(unreconciledMatching.map((item) => item.id), true); }} />
+      <ConfirmActionDialog visible={Boolean(unreconcileTransactionId)} title="Undo reconciliation?" message="This transaction is already reconciled across its linked accounts. Marking it unreconciled means those account records need to be checked again." confirmLabel="Mark unreconciled" onClose={() => setUnreconcileTransactionId(null)} onConfirm={async () => { if (!unreconcileTransactionId) return; await setTransactionsReconciled([unreconcileTransactionId], false); }} />
     </Screen>
   );
 }

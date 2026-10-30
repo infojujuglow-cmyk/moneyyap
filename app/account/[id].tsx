@@ -10,7 +10,7 @@ import { TransactionTypeFilters } from '@/components/TransactionTypeFilters';
 import { AppText, Button, Chip, EmptyState, IconCircle, SectionHeader, Surface } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
 import { getErrorMessage } from '@/lib/errors';
-import { isTransactionReconciled } from '@/lib/reconciliation';
+import { accountReconciliationSummary, isTransactionReconciled } from '@/lib/reconciliation';
 import { groupTransactionsByDate } from '@/lib/transactionDates';
 import { amountColor, colors, formatPeso, radii, spacing, typography } from '@/theme';
 import type { TransactionType } from '@/types/finance';
@@ -35,6 +35,7 @@ export default function AccountDetailScreen() {
   const [reconciliationFilter, setReconciliationFilter] = useState<ReconciliationFilter>('all');
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [reconcilingId, setReconcilingId] = useState<string | null>(null);
+  const [unreconcileTransactionId, setUnreconcileTransactionId] = useState<string | null>(null);
   const account = accounts.find((item) => item.id === id);
   if (!account) return <View style={styles.missing}><EmptyState icon="wallet-outline" title="Account not found" body="This account is no longer available." action={<Button label="Go back" onPress={() => router.back()} />} /></View>;
   const allActivity = transactions
@@ -71,6 +72,10 @@ export default function AccountDetailScreen() {
   });
   const unreconciledMatching = activity.filter((item) => !isTransactionReconciled(item, account.id));
   const reconciledCount = allActivity.filter((item) => isTransactionReconciled(item, account.id)).length;
+  const reconciliationSummary = accountReconciliationSummary(transactions, account.id);
+  const lastReconciledLabel = reconciliationSummary.lastReconciledAt
+    ? new Date(reconciliationSummary.lastReconciledAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+    : 'Never';
   const visibleActivity = desktop ? activity : activity.slice(0, visibleCount);
   const transactionGroups = groupTransactionsByDate(visibleActivity);
   const space = spaces.find((item) => item.id === account.spaceId);
@@ -84,13 +89,17 @@ export default function AccountDetailScreen() {
   const toggleReconciled = async (transactionId: string) => {
     const transaction = transactions.find((item) => item.id === transactionId);
     if (!transaction || reconcilingId) return;
+    if (isTransactionReconciled(transaction, account.id)) {
+      setUnreconcileTransactionId(transactionId);
+      return;
+    }
     setReconcilingId(transactionId); setError(null);
-    try { await setTransactionsReconciled([transactionId], !isTransactionReconciled(transaction, account.id), account.id); }
+    try { await setTransactionsReconciled([transactionId], true, account.id); }
     catch (reason) { setError(getErrorMessage(reason, 'Unable to update reconciliation.')); }
     finally { setReconcilingId(null); }
   };
-  return <Screen title={account.name} subtitle={account.isActive ? `${desktop ? `${account.institution ?? 'Account'} · ` : ''}${account.ownerUserId ? 'Private · only you' : 'Shared with workspace'}` : 'Removed · history preserved'} contentStyle={desktop ? styles.desktopContent : undefined} right={<View style={styles.headerActions}>{account.isActive && desktop && <Button label="Add transaction" icon="add" onPress={addTransaction} />}<Pressable onPress={() => router.push({ pathname: '/add-account', params: { edit: account.id } })}><IconCircle name="pencil-outline" /></Pressable>{!desktop && <Pressable onPress={() => router.back()}><IconCircle name="close" /></Pressable>}</View>}>
-    <Surface style={[styles.summary, desktop && styles.desktopSummary]}><View style={[styles.icon, desktop && styles.desktopIcon, { backgroundColor: `${account.accent}18` }]}><Ionicons name={account.type === 'credit_card' ? 'card-outline' : desktop && account.type === 'cash' ? 'cash-outline' : desktop && account.type === 'ewallet' ? 'phone-portrait-outline' : 'business-outline'} size={26} color={account.accent} /></View><View style={desktop && styles.balanceCopy}><AppText variant="eyebrow" style={styles.muted}>CURRENT BALANCE</AppText><AppText variant="display" style={{ color: amountColor(account.type === 'credit_card' ? -Math.abs(account.balance) : account.balance) }}>{formatPeso(account.type === 'credit_card' ? Math.abs(account.balance) : account.balance)}</AppText><AppText style={styles.muted}>{space ? `${space.name} Space` : 'Available in any Space'} · {account.type.replace('_', ' ')}</AppText></View>{desktop && <View style={styles.activitySummary}><AppText variant="eyebrow" style={styles.muted}>TRANSACTIONS</AppText><AppText variant="h2">{allActivity.length}</AppText><AppText variant="caption" style={styles.muted}>{reconciledCount} reconciled · {allActivity.length - reconciledCount} remaining</AppText></View>}</Surface>
+  return <Screen title={account.name} subtitle={account.isActive ? `${desktop ? `${account.institution ?? 'Account'} · ` : ''}${account.ownerUserId ? 'Private · only you' : 'Shared with workspace'}` : 'Removed · history preserved'} contentStyle={desktop ? styles.desktopContent : undefined} right={<View style={styles.headerActions}>{account.isActive && (desktop ? <Button label="Add transaction" icon="add" onPress={addTransaction} /> : <Pressable accessibilityLabel={`Add transaction for ${account.name}`} onPress={addTransaction}><IconCircle name="add" background={colors.mint} /></Pressable>)}<Pressable onPress={() => router.push({ pathname: '/add-account', params: { edit: account.id } })}><IconCircle name="pencil-outline" /></Pressable>{!desktop && <Pressable onPress={() => router.back()}><IconCircle name="close" /></Pressable>}</View>}>
+    <Surface style={[styles.summary, desktop && styles.desktopSummary]}><View style={[styles.icon, desktop && styles.desktopIcon, { backgroundColor: `${account.accent}18` }]}><Ionicons name={account.type === 'credit_card' ? 'card-outline' : desktop && account.type === 'cash' ? 'cash-outline' : desktop && account.type === 'ewallet' ? 'phone-portrait-outline' : 'business-outline'} size={26} color={account.accent} /></View><View style={desktop && styles.balanceCopy}><AppText variant="eyebrow" style={styles.muted}>CURRENT BALANCE</AppText><AppText variant="display" style={{ color: amountColor(account.type === 'credit_card' ? -Math.abs(account.balance) : account.balance) }}>{formatPeso(account.type === 'credit_card' ? Math.abs(account.balance) : account.balance)}</AppText><AppText style={styles.muted}>{space ? `${space.name} Space` : 'Available in any Space'} · {account.type.replace('_', ' ')}</AppText><View style={styles.lastReconciled}><Ionicons name={reconciliationSummary.fullyReconciled ? 'checkmark-circle' : 'time-outline'} size={15} color={reconciliationSummary.fullyReconciled ? colors.mintDeep : colors.slate} /><AppText variant="caption" style={reconciliationSummary.fullyReconciled ? styles.fullyReconciledText : styles.muted}>{reconciliationSummary.fullyReconciled ? 'Fully reconciled' : 'Last reconciled'} · {lastReconciledLabel}</AppText></View></View>{desktop && <View style={styles.activitySummary}><AppText variant="eyebrow" style={styles.muted}>TRANSACTIONS</AppText><AppText variant="h2">{allActivity.length}</AppText><AppText variant="caption" style={styles.muted}>{reconciledCount} reconciled · {allActivity.length - reconciledCount} remaining</AppText></View>}</Surface>
     <View style={styles.section}><SectionHeader title="Account transactions" /><AppText variant="caption" style={styles.muted}>{activity.length} of {allActivity.length} entries</AppText>
       <TransactionTypeFilters value={type} forVerificationOnly={forVerificationOnly} onChange={(nextType) => { setType(nextType); setForVerificationOnly(false); setCategoryId(null); setCategoryOpen(false); }} />
       <View style={styles.search}><Ionicons name="search-outline" size={20} color={colors.slate} /><TextInput value={query} onChangeText={setQuery} placeholder="Search merchant, payer, notes, or message" placeholderTextColor={colors.slate} style={styles.searchInput} />{query.length > 0 && <Pressable accessibilityLabel="Clear search" onPress={() => setQuery('')}><Ionicons name="close-circle" size={19} color={colors.slate} /></Pressable>}</View>
@@ -119,6 +128,7 @@ export default function AccountDetailScreen() {
     <AppText variant="caption" style={styles.help}>{account.isActive ? 'Removing is reversible and never deletes transaction history.' : 'Restoring makes this account available for new transactions again.'}</AppText>
     <ConfirmActionDialog visible={removeOpen} title={`Remove ${account.name}?`} message="It will disappear from new transaction options, but every past transaction and report will stay intact. You can restore it later." confirmLabel="Remove account" onClose={() => setRemoveOpen(false)} onConfirm={async () => { await setAccountActive(account.id, false); router.back(); }} />
     <ConfirmActionDialog visible={reconcileOpen} title={`Reconcile ${unreconciledMatching.length} transactions?`} message={`This marks only the ${account.name} side of every matching transaction as reconciled. The other side of transfers remains independent.`} confirmLabel="Mark reconciled" confirmVariant="primary" onClose={() => setReconcileOpen(false)} onConfirm={async () => { await setTransactionsReconciled(unreconciledMatching.map((item) => item.id), true, account.id); }} />
+    <ConfirmActionDialog visible={Boolean(unreconcileTransactionId)} title="Undo reconciliation?" message={`This transaction was already confirmed for ${account.name}. Marking it unreconciled means it needs to be checked against the bank account again.`} confirmLabel="Mark unreconciled" onClose={() => setUnreconcileTransactionId(null)} onConfirm={async () => { if (!unreconcileTransactionId) return; await setTransactionsReconciled([unreconcileTransactionId], false, account.id); }} />
   </Screen>;
 }
 
@@ -130,6 +140,8 @@ const styles = StyleSheet.create({
   icon: { width: 54, height: 54, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
   desktopIcon: { marginBottom: 0 },
   balanceCopy: { flex: 1, gap: spacing.xs },
+  lastReconciled: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },
+  fullyReconciledText: { color: colors.mintDeep },
   activitySummary: { minWidth: 180, paddingLeft: spacing.xxl, borderLeftWidth: 1, borderLeftColor: colors.border, gap: spacing.xs },
   muted: { color: colors.slate },
   section: { gap: spacing.md },

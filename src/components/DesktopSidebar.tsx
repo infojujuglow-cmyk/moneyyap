@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, type ViewStyle, View } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useFinance } from '@/context/FinanceContext';
+import { accountReconciliationSummary } from '@/lib/reconciliation';
 import { isReportKey, moreReportItems, primaryReportItems, type ReportKey } from '@/lib/reports';
 import { amountColor, colors, formatPeso, radii, spacing, typography } from '@/theme';
 import type { Account } from '@/types/finance';
@@ -34,7 +35,7 @@ export function DesktopSidebar() {
   const activeMoreReport = moreReportItems.some((item) => item.key === activeReport);
   const showMoreReports = moreReportsExpanded || (reportsSelected && activeMoreReport);
   const { session } = useAuth();
-  const { accounts, availableWorkspaces, workspaceId } = useFinance();
+  const { accounts, availableWorkspaces, transactions, workspaceId } = useFinance();
   const workspace = availableWorkspaces.find((item) => item.id === workspaceId);
   const accountGroups = groupAccountsByInstitution(accounts.filter((account) => account.isActive));
   const name = typeof session?.user.user_metadata.full_name === 'string' && session.user.user_metadata.full_name.trim()
@@ -89,10 +90,12 @@ export function DesktopSidebar() {
               </Pressable>
               {!collapsed && <View style={styles.institutionAccounts}>{institutionAccounts.map((account) => {
                 const selected = pathname === `/account/${account.id}`;
-                return <Pressable key={account.id} accessibilityRole="link" accessibilityState={{ selected }} onPress={() => router.push(`/account/${account.id}`)} style={({ hovered, pressed }) => [styles.accountItem, interactionTransition, selected && styles.accountSelected, (hovered || pressed) && !selected && styles.navHover]}>
+                const reconciliation = accountReconciliationSummary(transactions, account.id);
+                const lastReconciled = reconciliation.lastReconciledAt ? new Date(reconciliation.lastReconciledAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : 'never';
+                return <Pressable key={account.id} accessibilityRole="link" accessibilityLabel={`${account.name}, ${reconciliation.fullyReconciled ? 'fully reconciled' : 'not fully reconciled'}, last reconciled ${lastReconciled}`} accessibilityState={{ selected }} onPress={() => router.push(`/account/${account.id}`)} style={({ hovered, pressed }) => [styles.accountItem, interactionTransition, reconciliation.fullyReconciled && styles.accountFullyReconciled, selected && styles.accountSelected, (hovered || pressed) && !selected && styles.navHover]}>
                   {selected && <View style={styles.activeIndicator} />}
                   <View style={[styles.accountIcon, { backgroundColor: `${account.accent}14` }]}><Ionicons name={accountIcon(account)} size={14} color={account.accent} /></View>
-                  <View style={styles.accountCopy}><AppText variant="caption" numberOfLines={1} style={[styles.accountName, selected && styles.selectedText]}>{account.name}</AppText><AppText variant="caption" numberOfLines={1} style={[styles.accountBalance, { color: amountColor(account.type === 'credit_card' ? -Math.abs(account.balance) : account.balance) }]}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText></View>
+                  <View style={styles.accountCopy}><AppText variant="caption" numberOfLines={1} style={[styles.accountName, selected && styles.selectedText]}>{account.name}</AppText>{reconciliation.fullyReconciled && <Ionicons name="checkmark-circle" size={14} color={colors.mintDeep} />}<AppText variant="caption" numberOfLines={1} style={[styles.accountBalance, { color: amountColor(account.type === 'credit_card' ? -Math.abs(account.balance) : account.balance) }]}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText></View>
                 </Pressable>;
               })}</View>}
             </View>;
@@ -196,6 +199,7 @@ const styles = StyleSheet.create({
   institutionAccounts: { paddingHorizontal: 3, paddingVertical: 3 },
   accountItem: { minHeight: 42, paddingHorizontal: spacing.sm, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, position: 'relative', overflow: 'hidden' },
   accountSelected: { backgroundColor: colors.mintWash },
+  accountFullyReconciled: { backgroundColor: '#F3FCF8' },
   accountIcon: { width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   accountCopy: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   accountName: { flex: 1, minWidth: 0, color: colors.slateDark, fontFamily: typography.medium, fontSize: 12, lineHeight: 16 },

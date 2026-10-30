@@ -17,3 +17,19 @@ export const reconciliationDate = (transaction: Transaction, accountId?: string 
   if (!relevant.length) return null;
   return relevant.map((item) => item.reconciledAt).sort().at(-1) ?? null;
 };
+
+export const accountReconciliationSummary = (transactions: Transaction[], accountId: string) => {
+  const linkedTransactions = transactions.filter((transaction) => transactionAccountIds(transaction).includes(accountId));
+  const reconciledTransactions = linkedTransactions.filter((transaction) => isTransactionReconciled(transaction, accountId));
+  const reconciledDates = reconciledTransactions
+    .map((transaction) => reconciliationDate(transaction, accountId))
+    .filter((date): date is string => Boolean(date))
+    .sort();
+
+  return {
+    transactionCount: linkedTransactions.length,
+    reconciledCount: reconciledTransactions.length,
+    fullyReconciled: linkedTransactions.length > 0 && reconciledTransactions.length === linkedTransactions.length,
+    lastReconciledAt: reconciledDates.at(-1) ?? null,
+  };
+};

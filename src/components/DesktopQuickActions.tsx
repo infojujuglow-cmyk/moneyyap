@@ -1,12 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, usePathname } from 'expo-router';
+import { router, useLocalSearchParams, usePathname } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { useFinance } from '@/context/FinanceContext';
 import { colors, radii, shadows, spacing } from '@/theme';
 
 export function DesktopQuickActions() {
   const pathname = usePathname();
+  const params = useLocalSearchParams<{ id?: string }>();
+  const { accounts } = useFinance();
   const isTalkScreen = pathname === '/add' || pathname === '/(tabs)/add';
   const isManualTransactionScreen = pathname === '/manual-transaction';
+  const account = pathname.startsWith('/account/') ? accounts.find((item) => item.id === params.id && item.isActive) : null;
+  const addTransaction = () => router.push(account
+    ? { pathname: '/manual-transaction', params: { accountId: account.id, ...(account.spaceId ? { spaceId: account.spaceId } : {}) } }
+    : '/manual-transaction');
 
   if (isTalkScreen || isManualTransactionScreen) return null;
 
@@ -16,7 +23,7 @@ export function DesktopQuickActions() {
         accessibilityRole="button"
         accessibilityLabel="Add transaction manually"
         accessibilityHint="Open the manual transaction form"
-        onPress={() => router.push('/manual-transaction')}
+        onPress={addTransaction}
         style={({ hovered, pressed }) => [
           styles.button,
           styles.manualButton,
