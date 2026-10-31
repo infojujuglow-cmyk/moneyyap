@@ -6,6 +6,7 @@ import { colors, shadows, typography } from '@/theme';
 const icons = {
   index: ['home', 'home-outline'],
   transactions: ['receipt', 'receipt-outline'],
+  budgets: ['speedometer', 'speedometer-outline'],
   add: ['add', 'add'],
   analytics: ['pie-chart', 'pie-chart-outline'],
   settings: ['person', 'person-outline'],
@@ -33,6 +34,7 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
       <Tabs.Screen name="transactions" options={{ title: 'Transactions' }} />
+      <Tabs.Screen name="budgets" options={{ title: 'Budgets' }} />
       <Tabs.Screen name="add" options={{ title: 'Talk' }} />
       <Tabs.Screen name="analytics" options={{ title: 'Reports' }} />
       <Tabs.Screen name="settings" options={{ title: 'Me' }} />

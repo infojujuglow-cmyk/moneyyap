@@ -80,6 +80,32 @@ export interface TransactionReconciliation {
   reconciledBy: string;
 }
 
+export interface MonthlyBudget {
+  id: string;
+  workspaceId: string;
+  monthStart: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  allocations: BudgetAllocation[];
+}
+
+export interface BudgetAllocation {
+  id: string;
+  budgetId: string;
+  categoryId: string;
+  amount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransactionSplit {
+  id: string;
+  transactionId: string;
+  categoryId: string;
+  amount: number;
+}
+
 export interface Tag {
   id: string;
   name: string;

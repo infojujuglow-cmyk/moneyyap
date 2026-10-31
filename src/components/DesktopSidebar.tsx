@@ -13,6 +13,7 @@ import { AppText, Avatar, Wordmark } from './ui';
 const mainItems = [
   { label: 'Overview', path: '/(tabs)', icon: 'grid-outline' },
   { label: 'Transactions', path: '/(tabs)/transactions', icon: 'receipt-outline' },
+  { label: 'Budgets', path: '/(tabs)/budgets', icon: 'speedometer-outline' },
   { label: 'Talk to MoneyYap', path: '/(tabs)/add', icon: 'chatbubble-ellipses-outline' },
 ] as const;
 

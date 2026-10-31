@@ -29,6 +29,7 @@ export default function SettingsScreen() {
         <SettingsRow icon="grid-outline" title="Spaces" detail={`${spaces.filter((item) => !item.isArchived).length} active · organize life your way`} onPress={() => router.push('/spaces')} />
         <SettingsRow icon="people-outline" title="Members" detail={members.map((item) => item.fullName).join(' & ')} onPress={() => router.push('/household')} />
         <SettingsRow icon="pricetag-outline" title="Categories" detail="Shared or specific to a Space" onPress={() => router.push('/categories')} />
+        <SettingsRow icon="speedometer-outline" title="Budgets" detail="Monthly category plans and actual spending" onPress={() => router.push('/(tabs)/budgets' as never)} />
       </Surface></View>
 
       <View style={styles.section}><SectionHeader title="Preferences" /><Surface style={styles.menu}>

@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { classifyExtractedFacts, enrichExtractedFactsFromMessage, expandFeeFacts, extractStructuredPaymentFacts, type AccountIdentifier, type AccountIdentity, type ExtractedTransactionFacts, type MovementKind } from '../_shared/transaction-classification.ts';
 import {
-  classifyIntentHeuristic, createPendingTransactionClarification, filterFinanceRows, mergeFinanceQueryContext, originalMessageForClarification, readPendingTransactionClarification, reconcileIntentRoute, resolveDatePatch, sumFinanceRows,
+  classifyIntentHeuristic, createPendingTransactionClarification, filterFinanceRows, mergeFinanceQueryContext, monthDateRange, originalMessageForClarification, readPendingTransactionClarification, reconcileIntentRoute, resolveDatePatch, sumFinanceRows,
   type FinanceMetric, type FinanceQueryContext, type FinanceQueryPatch, type FinanceTransactionRow, type MoneyYapIntent,
 } from '../_shared/moneyyap-chat.ts';
 
@@ -12,7 +12,7 @@ const normalize = (value: unknown) => String(value ?? '').toLocaleLowerCase().no
 const peso = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
 const intentValues: MoneyYapIntent[] = ['record_transaction', 'query_finances', 'edit_transaction', 'delete_transaction', 'manage_account', 'manage_category', 'manage_space', 'general_conversation', 'clarification_response'];
-const metricValues: FinanceMetric[] = ['expense_total', 'income_total', 'net_cash_flow', 'spending_by_category', 'spending_by_account', 'transactions', 'account_balances', 'largest_expenses', 'compare_periods'];
+const metricValues: FinanceMetric[] = ['expense_total', 'income_total', 'net_cash_flow', 'spending_by_category', 'spending_by_account', 'transactions', 'account_balances', 'largest_expenses', 'compare_periods', 'budget_status'];
 const emptyPatch = (): FinanceQueryPatch => ({
   metric: null, transaction_type: null, space_scope: null, space_name: null, account_scope: null, account_names: [], category_name: null,
   exclude_category_names: [], merchant: null, counterparty: null, date_mode: 'unchanged', date_month: null, date_year: null,
@@ -182,6 +182,132 @@ const buildFinanceReply = (context: FinanceQueryContext, result: { amount: numbe
   if (context.metric === 'compare_periods') return result.breakdown.length === 2 ? `${result.breakdown[0].label}: ${peso.format(result.breakdown[0].amount)}\n${result.breakdown[1].label}: ${peso.format(result.breakdown[1].amount)}` : 'I couldn’t build that comparison yet.';
   return `I found ${result.count} matching transaction${result.count === 1 ? '' : 's'} ${time}.`;
 };
+
+const isBudgetQuestion = (message: string) => /\b(budget|allocation|allocated|over budget|afford|natitira|remaining limit|spending limit)\b/i.test(message);
+
+const localBudgetMonth = (message: string, now: Date, timeZone: string) => {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric' }).formatToParts(now);
+  let year = Number(parts.find((item) => item.type === 'year')?.value);
+  let month = Number(parts.find((item) => item.type === 'month')?.value);
+  if (/\blast month\b/i.test(message)) {
+    if (month === 1) { year -= 1; month = 12; } else month -= 1;
+  }
+  const key = `${year}-${String(month).padStart(2, '0')}-01`;
+  return { key, year, month, range: monthDateRange(year, month, timeZone) };
+};
+
+const categoryForBudgetQuestion = (message: string, categories: Entity[], selectedSpaceId: string | null) => {
+  const text = normalize(message);
+  const candidates = categories
+    .filter((item) => item.type === 'expense' && item.is_archived !== true)
+    .sort((left, right) => Number(right.space_id === selectedSpaceId) - Number(left.space_id === selectedSpaceId) || right.name.length - left.name.length);
+  return candidates.find((item) => text.includes(normalize(item.name)))
+    ?? candidates.find((item) => normalize(item.name).split(' ').some((part) => part.length >= 4 && text.includes(part)))
+    ?? null;
+};
+
+const requestedAffordabilityAmount = (message: string) => {
+  if (!/\bafford|kaya|pwede pa|can we still\b/i.test(message)) return null;
+  const values = [...message.matchAll(/(?:₱|php\s*)?([0-9][0-9,]*(?:\.\d{1,2})?)/gi)]
+    .map((match) => Number(match[1].replaceAll(',', '')))
+    .filter((value) => Number.isFinite(value) && value > 0 && value < 1_000_000_000);
+  return values[0] ?? null;
+};
+
+const executeBudgetQuery = async (
+  supabase: { from: (table: string) => any },
+  workspaceId: string,
+  message: string,
+  categories: Entity[],
+  selectedSpaceId: string | null,
+  now: Date,
+  timeZone: string,
+) => {
+  const targetMonth = localBudgetMonth(message, now, timeZone);
+  const { data: budget, error: budgetError } = await supabase.from('monthly_budgets').select('id,month_start').eq('workspace_id', workspaceId).eq('month_start', targetMonth.key).maybeSingle();
+  if (budgetError) throw budgetError;
+  const monthLabel = new Intl.DateTimeFormat('en-PH', { month: 'long', year: 'numeric', timeZone }).format(new Date(targetMonth.range.start));
+  if (!budget) return {
+    amount: 0, count: 0, allocated: 0, spent: 0, remaining: 0, month: targetMonth.key, category: null, breakdown: [],
+    reply: `There isn’t a budget set for ${monthLabel} in this workspace yet. Open Budgets to create one; I won’t invent an amount.`,
+  };
+
+  const { data: allocationRows, error: allocationError } = await supabase.from('budget_allocations').select('category_id,amount').eq('budget_id', budget.id);
+  if (allocationError) throw allocationError;
+  const transactions: { id: string; type: string; financial_effect: string; amount: number | string; category_id: string | null }[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase.from('transactions').select('id,type,financial_effect,amount,transaction_date,category_id,space_id').eq('workspace_id', workspaceId).gte('transaction_date', targetMonth.range.start).lt('transaction_date', targetMonth.range.end).order('transaction_date').range(from, from + pageSize - 1);
+    if (error) throw error;
+    transactions.push(...((data ?? []) as typeof transactions));
+    if (!data || data.length < pageSize) break;
+  }
+  const transactionIds = transactions.map((item) => item.id);
+  const splitRows: { transaction_id: string; category_id: string; amount: number | string }[] = [];
+  for (let index = 0; index < transactionIds.length; index += 500) {
+    const { data, error } = await supabase.from('transaction_splits').select('transaction_id,category_id,amount').in('transaction_id', transactionIds.slice(index, index + 500));
+    if (error) throw error;
+    splitRows.push(...(data ?? []));
+  }
+  const allocations = new Map<string, number>((allocationRows ?? []).map((item: { category_id: string; amount: number | string }) => [String(item.category_id), Number(item.amount)]));
+  const actuals = new Map<string, number>();
+  const addActual = (categoryId: string | null, amount: number) => actuals.set(categoryId ?? '__uncategorized__', (actuals.get(categoryId ?? '__uncategorized__') ?? 0) + amount);
+  transactions.forEach((transaction) => {
+    if (transaction.type !== 'refund' && transaction.financial_effect !== 'expense') return;
+    const sign = transaction.type === 'refund' ? -1 : 1;
+    const amount = Number(transaction.amount);
+    const splits = splitRows.filter((split) => split.transaction_id === transaction.id);
+    if (!splits.length) { addActual(transaction.category_id, sign * amount); return; }
+    const splitTotal = splits.reduce((sum, split) => sum + Number(split.amount), 0);
+    splits.forEach((split) => addActual(split.category_id, sign * Number(split.amount)));
+    if (amount - splitTotal > 0.005) addActual(transaction.category_id, sign * (amount - splitTotal));
+  });
+
+  const childrenByParent = new Map<string, string[]>();
+  categories.filter((item) => item.type === 'expense').forEach((item) => {
+    if (item.parent_id) childrenByParent.set(item.parent_id, [...(childrenByParent.get(item.parent_id) ?? []), item.id]);
+  });
+  const descendants = (rootId: string) => {
+    const result = new Set([rootId]);
+    const queue = [rootId];
+    while (queue.length) (childrenByParent.get(queue.shift()!) ?? []).forEach((id) => { if (!result.has(id)) { result.add(id); queue.push(id); } });
+    return [...result];
+  };
+  const totalsFor = (categoryId: string) => descendants(categoryId).reduce((result, id) => ({ allocated: result.allocated + (allocations.get(id) ?? 0), spent: result.spent + (actuals.get(id) ?? 0) }), { allocated: 0, spent: 0 });
+  const selectedCategory = categoryForBudgetQuestion(message, categories, selectedSpaceId);
+  const totalAllocated = [...allocations.values()].reduce((sum, amount) => sum + amount, 0);
+  const totalSpent = [...actuals.values()].reduce((sum, amount) => sum + amount, 0);
+  const selectedTotals = selectedCategory ? totalsFor(selectedCategory.id) : { allocated: totalAllocated, spent: totalSpent };
+  const remaining = selectedTotals.allocated - selectedTotals.spent;
+  const affordabilityAmount = requestedAffordabilityAmount(message);
+  const rootCategories = categories.filter((item) => item.type === 'expense' && !item.parent_id);
+  const over = rootCategories.map((item) => ({ item, ...totalsFor(item.id) })).filter((item) => item.allocated > 0 && item.spent >= item.allocated).sort((left, right) => (right.spent - right.allocated) - (left.spent - left.allocated));
+  let reply: string;
+  if (/\bover budget|exceed|lumampas\b/i.test(message)) {
+    reply = over.length
+      ? `Over budget in ${monthLabel}:\n${over.slice(0, 6).map(({ item, allocated, spent }) => `${item.name}: ${peso.format(spent)} spent, ${peso.format(spent - allocated)} over`).join('\n')}`
+      : `No budgeted category is over its limit for ${monthLabel}.`;
+  } else if (affordabilityAmount) {
+    const label = selectedCategory?.name ?? 'the workspace budget';
+    reply = remaining >= affordabilityAmount
+      ? `Yes. ${label} has ${peso.format(remaining)} left for ${monthLabel}. A ${peso.format(affordabilityAmount)} expense would leave ${peso.format(remaining - affordabilityAmount)}.`
+      : `${label} has ${peso.format(Math.max(0, remaining))} left for ${monthLabel}. A ${peso.format(affordabilityAmount)} expense would exceed it by ${peso.format(affordabilityAmount - remaining)}.`;
+  } else {
+    const label = selectedCategory?.name ?? 'This workspace';
+    reply = `${label} has ${peso.format(remaining)} remaining for ${monthLabel}: ${peso.format(selectedTotals.spent)} spent from ${peso.format(selectedTotals.allocated)} allocated.${remaining < 0 ? ` It is ${peso.format(Math.abs(remaining))} over budget.` : ''}`;
+  }
+  return {
+    amount: remaining,
+    count: transactions.length,
+    allocated: selectedTotals.allocated,
+    spent: selectedTotals.spent,
+    remaining,
+    month: targetMonth.key,
+    category: selectedCategory ? { id: selectedCategory.id, label: selectedCategory.name } : null,
+    breakdown: over.map(({ item, allocated, spent }) => ({ id: item.id, label: item.name, allocated, spent, remaining: allocated - spent })),
+    reply,
+  };
+};
 const managementReply = (intent: MoneyYapIntent) => ({ edit_transaction: 'Open the transaction you want to change, then tap Edit so I update the exact record.', delete_transaction: 'Open the transaction you want to remove, then use Delete so there’s no ambiguity.', manage_account: 'You can manage accounts from Me → Accounts.', manage_category: 'You can manage categories from Me → Categories.', manage_space: 'You can manage Spaces from Me → Spaces.', general_conversation: 'I can record transactions and answer questions using your actual MoneyYap data.', clarification_response: 'I need the original clarification details to continue.', record_transaction: '', query_finances: '' })[intent];
 
 Deno.serve(async (request) => {
@@ -215,11 +341,23 @@ Deno.serve(async (request) => {
       const reconciled = reconcileIntentRoute(heuristic, { intent: modelIntent, confidence: Number(routed.confidence) || 0 });
       route = { ...reconciled, reply: shortString(routed.reply, 600), query_patch: (routed.query_patch ?? route.query_patch) as FinanceQueryPatch };
     } catch (error) { console.warn('intent router fallback', error instanceof Error ? error.message : error); }
+    const budgetFollowUp = previousContext.metric === 'budget_status'
+      && (route.intent === 'query_finances' || route.intent === 'clarification_response')
+      && !/\b(income|expenses?|account balance|net worth|cash flow|transactions?|largest)\b/i.test(message);
+    const budgetRequest = isBudgetQuestion(message) || budgetFollowUp;
     if (pending && heuristic.intent === 'clarification_response') route = { ...route, intent: 'clarification_response', confidence: Math.max(route.confidence, heuristic.confidence) };
+    if (budgetRequest) route = { ...route, intent: 'query_finances', confidence: Math.max(route.confidence, 0.98) };
     const pendingAssistantWasTransaction = Boolean(pending && recent.some((item) => item.role === 'assistant' && item.message_type === 'clarification' && item.intent === 'record_transaction'));
     const isTransactionClarification = route.intent === 'clarification_response' && Boolean(transactionPending || pendingAssistantWasTransaction);
     let reply = route.reply ?? ''; let transaction: Record<string, unknown> | null = null; let transactions: Record<string, unknown>[] = []; let queryContext: FinanceQueryContext | null = null; let queryResult: Record<string, unknown> | null = null; let clarification: Record<string, unknown> | null = null; let pendingClarificationState: Record<string, unknown> | null = null; let messageType = 'text'; const now = new Date();
     if (route.intent === 'query_finances' || (route.intent === 'clarification_response' && previousContext.metric && !isTransactionClarification)) {
+      if (budgetRequest) {
+        queryContext = mergeFinanceQueryContext(previousContext, { metric: 'budget_status', spaceId: selectedSpaceId });
+        const result = await executeBudgetQuery(supabase, workspaceId, message, categories, selectedSpaceId, now, timezone);
+        queryResult = result;
+        reply = result.reply;
+        messageType = 'finance_answer';
+      } else {
       const patch = route.query_patch ?? localQueryPatch(message, accounts, categories, Boolean(previousContext.metric)); const changes: Partial<FinanceQueryContext> = {}; if (patch.metric) changes.metric = patch.metric; else if (!previousContext.metric) changes.metric = 'expense_total'; if (patch.transaction_type) changes.transactionType = patch.transaction_type; if (patch.space_scope) changes.spaceScope = patch.space_scope;
       const requestedSpace = findEntity(patch.space_name, spaces); const defaultSpace = spaces.find((item) => item.id === selectedSpaceId) ?? spaces[0]; if (patch.space_scope === 'all') changes.spaceId = null; else if (requestedSpace) changes.spaceId = requestedSpace.id; else if (selectedSpaceId) { changes.spaceId = selectedSpaceId; changes.spaceScope = 'current'; } else if (!previousContext.spaceId && defaultSpace) changes.spaceId = defaultSpace.id;
       if (patch.account_scope === 'all') changes.accountIds = 'all'; if (patch.account_scope === 'specific') { const matched = patch.account_names.map((name) => findEntity(name, accounts)).filter((item): item is Entity => Boolean(item)); if (matched.length) changes.accountIds = matched.map((item) => item.id); else clarification = { type: 'account', question: 'Which account should I use for this query?', accountIds: accounts.map((item) => item.id) }; }
@@ -227,6 +365,7 @@ Deno.serve(async (request) => {
       const category = findEntity(patch.category_name, eligibleCategories); if (category) changes.categoryId = category.id; if (patch.exclude_category_names.length) changes.excludeCategoryIds = patch.exclude_category_names.map((name) => findEntity(name, eligibleCategories)?.id).filter((id): id is string => Boolean(id)); if (patch.merchant) changes.merchant = patch.merchant; if (patch.counterparty) changes.counterparty = patch.counterparty; if (patch.grouping) changes.grouping = patch.grouping;
       changes.dateRange = resolveDatePatch(patch, now, timezone, previousContext.dateRange); queryContext = mergeFinanceQueryContext(previousContext, changes); if (patch.comparison === 'previous_period' && queryContext.dateRange) queryContext.comparison = { first: previousPeriod(queryContext.dateRange), second: queryContext.dateRange };
       if (!clarification) { queryResult = await executeFinanceQuery(supabase, workspaceId, queryContext, accounts, categories); reply = buildFinanceReply(queryContext, queryResult as { amount: number; count: number; breakdown: { label: string; amount: number }[] }, accounts, categories, timezone); messageType = 'finance_answer'; } else { reply = String(clarification.question); messageType = 'clarification'; }
+      }
     } else if (route.intent === 'record_transaction' || isTransactionClarification) {
       const originalMessage = isTransactionClarification ? originalMessageForClarification(pending, recent, message) : message;
       const clarificationMessage = isTransactionClarification ? message : null;

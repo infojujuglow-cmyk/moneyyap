@@ -10,6 +10,8 @@ const { classifyIntentHeuristic, createPendingTransactionClarification, filterFi
 
 assert.equal(classifyIntentHeuristic('Spent 500 on lunch').intent, 'record_transaction');
 assert.equal(classifyIntentHeuristic('How much did I spend on food?').intent, 'query_finances');
+assert.equal(classifyIntentHeuristic('Magkano pa natitira sa groceries budget?').intent, 'query_finances');
+assert.equal(classifyIntentHeuristic('Can we still afford a 3000 dinner based on our dining budget?').intent, 'query_finances');
 assert.equal(classifyIntentHeuristic('62000 transferred from bizlink to bpi business').intent, 'record_transaction');
 assert.equal(classifyIntentHeuristic('Transfer 62000 from BPI Bizlink to BPI Business').intent, 'record_transaction');
 assert.equal(classifyIntentHeuristic('Cash withdrawal 62000 from bpi business').intent, 'record_transaction');

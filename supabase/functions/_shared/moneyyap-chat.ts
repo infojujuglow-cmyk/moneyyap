@@ -18,7 +18,8 @@ export type FinanceMetric =
   | 'transactions'
   | 'account_balances'
   | 'largest_expenses'
-  | 'compare_periods';
+  | 'compare_periods'
+  | 'budget_status';
 
 export type FinanceDateRange = { start: string; end: string };
 
@@ -128,9 +129,9 @@ export const classifyIntentHeuristic = (message: string, options: { hasPendingCl
   if (/\b(add|create|edit|rename|remove|delete|manage)\b/.test(text) && /\b(category|subcategory)\b/.test(text)) return { intent: 'manage_category', confidence: 0.91 };
   if (/\b(add|create|edit|rename|remove|delete|manage)\b/.test(text) && /\bspace\b/.test(text)) return { intent: 'manage_space', confidence: 0.91 };
 
-  const queryLanguage = /\b(how much|how many|total|show|list|biggest|largest|compare|comparison|breakdown|spending|expenses|expense|income|transfers|balance|balances|net worth|cash flow|money do i have|magkano|kabuuan)\b/;
+  const queryLanguage = /\b(how much|how many|total|show|list|biggest|largest|compare|comparison|breakdown|spending|expenses|expense|income|transfers|balance|balances|net worth|cash flow|budget|allocation|afford|money do i have|magkano|kabuuan|natitira|over budget)\b/;
   const questionShape = /^(how|what|which|when|where|who|show|list|compare|total|magkano|ilan)\b/;
-  const explicitDataRequest = /^(?:i want|give me|tell me|can you show|could you show)\b.*\b(?:total|balance|balances|net worth|cash flow|breakdown|expenses|income|transfers|spending)\b/;
+  const explicitDataRequest = /^(?:i want|give me|tell me|can you show|could you show|can we)\b.*\b(?:total|balance|balances|net worth|cash flow|breakdown|expenses|income|transfers|spending|budget|afford)\b/;
   const recordVerb = /\b(spend|spent|pay|paid|buy|bought|receive|received|earn|earned|get paid|got paid|transfer|transferred|send|sent|withdraw|withdrawal|withdrew|deposit|deposited|nagbayad|gumastos|natanggap)\b/;
   const amount = /(?:\bphp\b|\bp\s?\d|\b\d+(?:[,.]\d+)?\s?(?:k|m)?\b)/;
   const explicitPaymentContext = /\b(?:using|use|with|via|from)\s+(?:cash|cash on hand|gcash|maya|e[ -]?wallet|wallet|credit card|debit card|card)\b/;
