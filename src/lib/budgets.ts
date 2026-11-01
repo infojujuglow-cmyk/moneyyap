@@ -58,6 +58,7 @@ const isInMonth = (value: string, month: Date) => {
 };
 
 const amountEntriesForTransaction = (transaction: Transaction, splits: TransactionSplit[]) => {
+  if ((transaction.businessClassification ?? 'operating') !== 'operating') return [];
   if (transaction.type !== 'refund' && transaction.financialEffect !== 'expense') return [];
   const sign = transaction.type === 'refund' ? -1 : 1;
   const transactionSplits = splits.filter((split) => split.transactionId === transaction.id);

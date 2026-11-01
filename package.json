@@ -46,8 +46,9 @@
     "test:chat": "node scripts/test-chat-architecture.mjs",
     "test:reports": "node scripts/test-reports.mjs",
     "test:budgets": "node scripts/test-budgets.mjs",
+    "test:integration": "node scripts/test-financial-integration.mjs",
     "test:reconciliation": "node scripts/test-reconciliation.mjs",
-    "test": "npm run test:classification && npm run test:chat && npm run test:reports && npm run test:budgets && npm run test:reconciliation",
+    "test": "npm run test:classification && npm run test:chat && npm run test:reports && npm run test:budgets && npm run test:integration && npm run test:reconciliation",
     "doctor": "expo-doctor"
   },
   "private": true

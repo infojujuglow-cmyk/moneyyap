@@ -13,6 +13,8 @@ export type ClarificationRequest =
   | { type: 'ownership'; question: string };
 export type CategoryType = 'expense' | 'income';
 export type MemberRole = 'owner' | 'admin' | 'member';
+export type SpaceType = 'personal' | 'household' | 'business';
+export type BusinessClassification = 'operating' | 'owner_capital_contribution' | 'owner_withdrawal' | 'owner_loan' | 'loan_repayment';
 
 export interface WorkspaceMember {
   id: string;
@@ -37,6 +39,10 @@ export interface Space {
   color: string;
   sortOrder: number;
   isArchived: boolean;
+  type: SpaceType;
+  description: string | null;
+  currency: string;
+  legalEntityExternalId: string | null;
 }
 
 export interface Account {
@@ -136,6 +142,7 @@ export interface Transaction {
   referenceNumber: string | null;
   rawExtraction: Record<string, unknown> | null;
   classificationReviewRequired: boolean;
+  businessClassification: BusinessClassification;
   reconciliations: TransactionReconciliation[];
   aiParsed: boolean;
   aiConfidence: number | null;
@@ -167,6 +174,7 @@ export interface ParsedTransactionDraft {
   confidence: number;
   needsConfirmation: boolean;
   classificationReviewRequired?: boolean;
+  businessClassification?: BusinessClassification;
   confirmationQuestion?: string;
   candidateAccountIds?: string[];
   candidateCategoryIds?: string[];

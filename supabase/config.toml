@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.parse-transaction-image]
 verify_jwt = true
+
+[functions.integration-api]
+verify_jwt = false

@@ -316,6 +316,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
       bankTransactionLabel: draft.bankTransactionLabel ?? null, referenceNumber: draft.referenceNumber ?? null,
       rawExtraction: draft.rawExtraction ?? null,
       classificationReviewRequired: draft.classificationReviewRequired ?? false,
+      businessClassification: draft.businessClassification ?? 'operating',
       reconciliations: [],
       aiParsed: Boolean(draft.originalMessage), aiConfidence: draft.originalMessage ? draft.confidence : null, createdAt: now, updatedAt: now,
     };
@@ -326,6 +327,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
         counterparty_id: transaction.counterpartyId, counterparty_name: transaction.counterpartyName, ownership_status: transaction.ownershipStatus,
         bank_transaction_label: transaction.bankTransactionLabel, reference_number: transaction.referenceNumber, raw_extraction: transaction.rawExtraction,
         classification_review_required: transaction.classificationReviewRequired,
+        business_classification: transaction.businessClassification,
         amount: transaction.amount, currency: transaction.currency, merchant: transaction.merchant,
         category_id: transaction.categoryId, account_from_id: transaction.accountFromId, account_to_id: transaction.accountToId,
         transaction_date: transaction.transactionDate, notes: transaction.notes, original_message: transaction.originalMessage,
@@ -390,6 +392,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
         ['transactionDate', 'transaction_date'], ['notes', 'notes'], ['bankTransactionLabel', 'bank_transaction_label'],
         ['referenceNumber', 'reference_number'], ['rawExtraction', 'raw_extraction'],
         ['classificationReviewRequired', 'classification_review_required'],
+        ['businessClassification', 'business_classification'],
       ];
       fields.forEach(([source, target]) => { if (changes[source] !== undefined) payload[target] = changes[source]; });
       const { data, error } = await supabase.from('transactions').update(payload).eq('id', id).select('id').maybeSingle();
@@ -501,7 +504,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
     if (!supabase || !workspaceId || !session?.user.id) throw new Error('Create a workspace before adding a Space.');
     let id: string;
     {
-      const { data, error } = await supabase.from('spaces').insert({ workspace_id: workspaceId, created_by: session.user.id, name: space.name, icon: space.icon, color: space.color, sort_order: space.sortOrder, is_archived: space.isArchived }).select('id').single();
+      const { data, error } = await supabase.from('spaces').insert({ workspace_id: workspaceId, created_by: session.user.id, name: space.name, icon: space.icon, color: space.color, sort_order: space.sortOrder, is_archived: space.isArchived, space_type: space.type, description: space.description, currency: space.currency, legal_entity_external_id: space.legalEntityExternalId }).select('id').single();
       if (error) throw error; id = String(data.id);
     }
     await refreshFinance();
@@ -515,6 +518,8 @@ export function FinanceProvider({ children }: PropsWithChildren) {
       if (changes.name !== undefined) payload.name = changes.name; if (changes.icon !== undefined) payload.icon = changes.icon;
       if (changes.color !== undefined) payload.color = changes.color; if (changes.sortOrder !== undefined) payload.sort_order = changes.sortOrder;
       if (changes.isArchived !== undefined) payload.is_archived = changes.isArchived;
+      if (changes.type !== undefined) payload.space_type = changes.type; if (changes.description !== undefined) payload.description = changes.description;
+      if (changes.currency !== undefined) payload.currency = changes.currency; if (changes.legalEntityExternalId !== undefined) payload.legal_entity_external_id = changes.legalEntityExternalId;
       const { data, error } = await supabase.from('spaces').update(payload).eq('id', id).select('id').maybeSingle(); if (error) throw error; if (!data) throw new Error('Space could not be updated. Refresh and try again.');
     }
     setSpaces((items) => items.map((item) => item.id === id ? { ...item, ...changes } : item));

@@ -21,6 +21,7 @@ const manageItems = [
   { label: 'Spaces', path: '/spaces', icon: 'apps-outline' },
   { label: 'Categories', path: '/categories', icon: 'pricetag-outline' },
   { label: 'Members', path: '/household', icon: 'people-outline' },
+  { label: 'Integrations', path: '/integrations', icon: 'git-network-outline' },
 ] as const;
 
 const interactionTransition = { transitionDuration: '140ms', transitionProperty: 'background-color, opacity' } as unknown as ViewStyle;

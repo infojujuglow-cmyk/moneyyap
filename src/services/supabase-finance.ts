@@ -28,7 +28,8 @@ const mapCategory = (row: Record<string, unknown>): Category => ({
 
 const mapSpace = (row: Record<string, unknown>): Space => ({
   id: String(row.id), name: String(row.name), icon: String(row.icon ?? 'grid-outline'), color: String(row.color ?? '#35D6A2'),
-  sortOrder: Number(row.sort_order ?? 0), isArchived: Boolean(row.is_archived),
+  sortOrder: Number(row.sort_order ?? 0), isArchived: Boolean(row.is_archived), type: (row.space_type ?? 'household') as Space['type'],
+  description: row.description as string | null, currency: String(row.currency ?? 'PHP'), legalEntityExternalId: row.legal_entity_external_id as string | null,
 });
 
 const mapCounterparty = (row: Record<string, unknown>): Counterparty => ({
@@ -50,6 +51,7 @@ const mapTransaction = (row: Record<string, unknown>, reconciliations: Transacti
   originalMessage: row.original_message as string | null, bankTransactionLabel: row.bank_transaction_label as string | null,
   referenceNumber: row.reference_number as string | null, rawExtraction: row.raw_extraction as Record<string, unknown> | null,
   classificationReviewRequired: Boolean(row.classification_review_required),
+  businessClassification: (row.business_classification ?? 'operating') as Transaction['businessClassification'],
   reconciliations,
   aiParsed: Boolean(row.ai_parsed),
   aiConfidence: row.ai_confidence == null ? null : Number(row.ai_confidence), createdAt: String(row.created_at), updatedAt: String(row.updated_at),

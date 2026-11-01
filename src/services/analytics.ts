@@ -1,8 +1,8 @@
 import type { Account, Category, CategoryType, MonthlyPoint, Space, Transaction } from '@/types/finance';
 
-export const isSpend = (transaction: Transaction) => transaction.financialEffect === 'expense';
+export const isSpend = (transaction: Transaction) => (transaction.businessClassification ?? 'operating') === 'operating' && transaction.financialEffect === 'expense';
 export const isRefund = (transaction: Transaction) => transaction.type === 'refund';
-export const isIncome = (transaction: Transaction) => transaction.financialEffect === 'income' && !isRefund(transaction);
+export const isIncome = (transaction: Transaction) => (transaction.businessClassification ?? 'operating') === 'operating' && transaction.financialEffect === 'income' && !isRefund(transaction);
 export const expenseContribution = (transaction: Transaction) => isRefund(transaction) ? -transaction.amount : isSpend(transaction) ? transaction.amount : 0;
 
 export const formatReportPercentage = (amount: number, total: number) => {

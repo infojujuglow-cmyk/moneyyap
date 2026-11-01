@@ -10,7 +10,7 @@ import { AppText, Button } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
 import { isTransactionReconciled, reconciliationDate, transactionAccountIds } from '@/lib/reconciliation';
 import { colors, radii, spacing, typography } from '@/theme';
-import type { Account, Category, ParsedTransactionDraft, PaymentRail, Transaction, TransactionType } from '@/types/finance';
+import type { Account, BusinessClassification, Category, ParsedTransactionDraft, PaymentRail, Transaction, TransactionType } from '@/types/finance';
 
 type Picker = 'space' | 'account' | 'destination' | 'category' | 'rail' | 'tags' | null;
 type EntryMode = TransactionType | 'verification';
@@ -22,6 +22,13 @@ const transactionTypes: { id: EntryMode; label: string; icon: keyof typeof Ionic
   { id: 'transfer', label: 'Internal transfer', icon: 'swap-horizontal' },
   { id: 'credit_card_payment', label: 'Card payment', icon: 'card-outline' },
   { id: 'refund', label: 'Refund', icon: 'return-down-back' },
+];
+const capitalOptions: { id: BusinessClassification; label: string; direction: 'income' | 'expense' | 'both' }[] = [
+  { id: 'operating', label: 'Operating', direction: 'both' },
+  { id: 'owner_capital_contribution', label: 'Owner capital', direction: 'income' },
+  { id: 'owner_loan', label: 'Owner loan', direction: 'income' },
+  { id: 'owner_withdrawal', label: 'Owner withdrawal', direction: 'expense' },
+  { id: 'loan_repayment', label: 'Loan repayment', direction: 'expense' },
 ];
 
 const railLabels: Record<PaymentRail, string> = {
@@ -98,6 +105,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
       bankTransactionLabel: editingTransaction.bankTransactionLabel,
       rawExtraction: editingTransaction.rawExtraction,
       classificationReviewRequired: editingTransaction.classificationReviewRequired,
+      businessClassification: editingTransaction.businessClassification,
     } satisfies ParsedTransactionDraft;
     if (!params.draft) return null;
     try { return JSON.parse(params.draft) as ParsedTransactionDraft; } catch { return null; }
@@ -117,13 +125,14 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const [destinationId, setDestinationId] = useState(initialDraft?.accountToId ?? null);
   const [categoryId, setCategoryId] = useState(initialDraft?.categoryId ?? null);
   const [paymentRail, setPaymentRail] = useState<PaymentRail>(initialDraft?.paymentRail ?? 'unknown');
+  const [businessClassification, setBusinessClassification] = useState<BusinessClassification>(initialDraft?.businessClassification ?? 'operating');
   const [notes, setNotes] = useState(initialDraft?.notes ?? '');
   const [transactionDate, setTransactionDate] = useState(() => {
     const parsed = initialDraft?.transactionDate ? new Date(initialDraft.transactionDate) : new Date();
     return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
   });
   const [picker, setPicker] = useState<Picker>(null);
-  const [moreOpen, setMoreOpen] = useState(Boolean(initialDraft?.notes || initialDraft?.paymentRail && initialDraft.paymentRail !== 'unknown' || initialDraft?.tagIds?.length || editingTransaction?.reconciliations.length));
+  const [moreOpen, setMoreOpen] = useState(Boolean(initialDraft?.notes || initialDraft?.paymentRail && initialDraft.paymentRail !== 'unknown' || initialDraft?.tagIds?.length || initialDraft?.businessClassification && initialDraft.businessClassification !== 'operating' || editingTransaction?.reconciliations.length));
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reconciliationBusyAccountId, setReconciliationBusyAccountId] = useState<string | null>(null);
@@ -145,6 +154,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const selectedDestination = accounts.find((account) => account.id === effectiveDestinationId);
   const selectedCategory = categories.find((category) => category.id === effectiveCategoryId);
   const selectedSpace = spaces.find((space) => space.id === spaceId);
+  const availableCapitalOptions = capitalOptions.filter((item) => item.direction === 'both' || item.direction === type);
   const categoryLabel = (category?: Category | null) => {
     if (!category) return null;
     const path = [category.name];
@@ -204,6 +214,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
     const sameFinancialType = nextType === type;
     setCategoryMustBeChosen(forVerification && nextMode === 'expense');
     setType(nextType); setForVerification(nextMode === 'verification'); setError(null);
+    if (!capitalOptions.some((item) => item.id === businessClassification && (item.direction === 'both' || item.direction === nextType))) setBusinessClassification('operating');
     if (sameFinancialType) return;
     const contextualAccountId = initialAccount?.isActive ? initialAccount.id : null;
     const contextIsCardDestination = nextType === 'credit_card_payment' && initialAccount?.type === 'credit_card';
@@ -235,6 +246,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
         paidByUserId: editingTransaction?.paidByUserId ?? members[0]?.id ?? null, transactionDate: transactionDate.toISOString(), notes: notes.trim() || null,
         originalMessage: initialDraft?.originalMessage ?? '', confidence: initialDraft?.confidence ?? 1, needsConfirmation: false,
         classificationReviewRequired: forVerification,
+        businessClassification: selectedSpace?.type === 'business' ? businessClassification : 'operating',
         sourceKind: initialDraft?.sourceKind, referenceNumber: initialDraft?.referenceNumber,
         bankTransactionLabel: initialDraft?.bankTransactionLabel, rawExtraction: initialDraft?.rawExtraction,
       };
@@ -257,6 +269,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
           transactionDate: draft.transactionDate,
           notes: draft.notes,
           classificationReviewRequired: forVerification,
+          businessClassification: draft.businessClassification ?? 'operating',
         });
       } else await saveDraft(draft);
       router.back();
@@ -290,6 +303,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
       confidence: 1,
       needsConfirmation: false,
       classificationReviewRequired: forVerification,
+      businessClassification: selectedSpace?.type === 'business' ? businessClassification : 'operating',
     };
     router.replace({ pathname: '/manual-transaction', params: { draft: JSON.stringify(duplicateDraft) } });
   };
@@ -377,6 +391,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
             <LabeledInput label="Notes · optional" value={notes} onChangeText={setNotes} placeholder="Add a note" multiline />
             <Pressable onPress={() => setMoreOpen((current) => !current)} style={({ pressed }) => [styles.moreToggle, pressed && styles.pressed]}><View style={styles.moreTitle}><Ionicons name="options-outline" size={19} color={colors.slateDark} /><AppText variant="bodyMedium">More details</AppText></View><Ionicons name={moreOpen ? 'chevron-up' : 'chevron-down'} size={19} color={colors.slate} /></Pressable>
             {moreOpen && <View style={styles.moreDetails}>
+              {selectedSpace?.type === 'business' && (type === 'income' || type === 'expense') && <View style={styles.classificationField}><View><AppText variant="eyebrow" style={styles.muted}>BUSINESS CLASSIFICATION</AppText><AppText variant="caption" style={styles.muted}>Capital and owner financing stay outside operating results.</AppText></View><View style={styles.classificationOptions}>{availableCapitalOptions.map((item) => <Pressable key={item.id} onPress={() => setBusinessClassification(item.id)} style={[styles.classificationOption, businessClassification === item.id && styles.classificationSelected]}><AppText variant="caption" style={businessClassification === item.id ? styles.classificationSelectedText : styles.muted}>{item.label}</AppText></Pressable>)}</View></View>}
               {editingTransaction && <View style={styles.reconciliationPanel}><View style={styles.reconciliationHeading}><View><AppText variant="eyebrow" style={styles.muted}>RECONCILIATION</AppText><AppText variant="caption" style={styles.muted}>Tracked independently for each linked account</AppText></View>{isTransactionReconciled(editingTransaction) && <View style={styles.reconciledPill}><Ionicons name="checkmark-circle" size={15} color={colors.mintDeep} /><AppText variant="caption" style={styles.reconciledText}>Fully reconciled</AppText></View>}</View>{reconciliationAccounts.map((account) => { const reconciled = isTransactionReconciled(editingTransaction, account.id); const reconciledAt = reconciliationDate(editingTransaction, account.id); return <Pressable key={account.id} accessibilityRole="checkbox" accessibilityState={{ checked: reconciled }} onPress={() => void toggleReconciliation(account.id)} style={({ pressed }) => [styles.reconciliationRow, pressed && styles.pressed]}><View style={[styles.reconciliationIcon, reconciled && styles.reconciliationIconDone]}><Ionicons name={reconciled ? 'checkmark' : 'ellipse-outline'} size={18} color={reconciled ? colors.mintDeep : colors.slate} /></View><View style={styles.reconciliationCopy}><AppText variant="bodyMedium">{account.name}</AppText><AppText variant="caption" style={styles.muted}>{reconciled && reconciledAt ? `Reconciled ${new Date(reconciledAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Not reconciled'}</AppText></View>{reconciliationBusyAccountId === account.id ? <AppText variant="caption" style={styles.muted}>Saving…</AppText> : <AppText variant="caption" style={reconciled ? styles.unreconcileText : styles.reconcileText}>{reconciled ? 'Undo' : 'Mark reconciled'}</AppText>}</Pressable>; })}</View>}
               <SmartSelectField label="Payment method / rail" value={railLabels[paymentRail]} placeholder="Not specified" onPress={() => setPicker('rail')} hint="Separate from the financial account above" />
               {tags.length > 0 && <SmartSelectField label="Tags · optional" value={tagIds.length ? `${tagIds.length} selected` : null} placeholder="Choose tags" onPress={() => setPicker('tags')} />}
@@ -442,6 +457,11 @@ const styles = StyleSheet.create({
   moreToggle: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border },
   moreTitle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   moreDetails: { gap: spacing.xl },
+  classificationField: { gap: spacing.sm },
+  classificationOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  classificationOption: { minHeight: 38, justifyContent: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radii.pill, backgroundColor: colors.white, paddingHorizontal: spacing.md },
+  classificationSelected: { borderColor: colors.mintDark, backgroundColor: colors.mintWash },
+  classificationSelectedText: { color: colors.mintDeep },
   reconciliationPanel: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, backgroundColor: colors.white, padding: spacing.md, gap: spacing.sm },
   reconciliationHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, paddingBottom: spacing.xs },
   reconciledPill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, borderRadius: radii.pill, backgroundColor: colors.mintWash, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
