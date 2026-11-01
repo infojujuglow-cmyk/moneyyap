@@ -40,7 +40,7 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
   const directionBackground = positive ? colors.incomeWash : negative ? colors.expenseWash : meta.background;
   const amountPrefix = positive ? '+' : negative ? '−' : '';
   const title = transaction.counterpartyName ?? transaction.merchant ?? (transaction.classificationReviewRequired ? 'For verification' : meta.label);
-  const detail = `${transaction.classificationReviewRequired ? 'For verification · ' : ''}${category ? `${parent ? `${parent.name} › ` : ''}${category.name}` : meta.label}${space ? ` · ${space.name}` : ''}${account ? ` · ${account.name}` : ''}${transaction.paymentRail !== 'unknown' ? ` · via ${transaction.paymentRail.replaceAll('_', ' ')}` : ''}`;
+  const detail = `${transaction.classificationReviewRequired ? 'For verification · ' : ''}${category ? `${parent ? `${parent.name} › ` : ''}${category.name}` : meta.label}${space ? ` · ${space.name}` : ''}${account ? ` · ${account.name}` : ''}${transaction.paymentRail !== 'unknown' ? ` · via ${transaction.paymentRail.replaceAll('_', ' ')}` : ''} · by ${transaction.createdByName}`;
   const receiver = transaction.type === 'transfer' || transaction.type === 'credit_card_payment'
     ? destinationAccount?.name ?? '—'
     : transaction.counterpartyName ?? transaction.merchant ?? '—';
@@ -56,6 +56,7 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
       <View style={styles.receiverCell}><AppText variant="caption" numberOfLines={1}>{receiver}</AppText><AppText variant="caption" style={[styles.cellMeta, transaction.classificationReviewRequired && styles.verificationText]} numberOfLines={1}>{transaction.classificationReviewRequired ? 'For verification' : meta.label}</AppText></View>
       <AppText variant="caption" style={[styles.categoryCell, transaction.classificationReviewRequired && !category && styles.verificationText]} numberOfLines={1}>{categoryName}</AppText>
       <AppText variant="caption" style={styles.notesCell} numberOfLines={2}>{transaction.notes?.trim() || '—'}</AppText>
+      <AppText variant="caption" style={styles.creatorCell} numberOfLines={1}>{transaction.createdByName}</AppText>
       <View style={styles.amountWrap}><AppText variant="bodyMedium" style={{ color: direction === 'neutral' ? colors.neutralAmount : directionColor }}>{amountPrefix}{formatPeso(transaction.amount)}</AppText></View>
       {reconciliationControl}
     </Pressable>
@@ -65,7 +66,7 @@ export function TransactionRow({ transaction, onPress, compact = false, desktop 
     : mobileList && transaction.type === 'credit_card_payment'
       ? `Payment to ${destinationAccount?.name ?? 'credit card'}`
       : title;
-  const mobileDetail = `${transaction.classificationReviewRequired ? 'For verification · ' : ''}${categoryName !== '—' ? categoryName : meta.label}${space ? ` · ${space.name}` : ''}`;
+  const mobileDetail = `${transaction.classificationReviewRequired ? 'For verification · ' : ''}${categoryName !== '—' ? categoryName : meta.label}${space ? ` · ${space.name}` : ''} · by ${transaction.createdByName}`;
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${mobileTitle}${transaction.classificationReviewRequired ? ', for verification' : ''}`} onPress={onPress} style={({ pressed }) => [styles.row, compact && styles.compact, mobileList && styles.mobileListRow, transaction.classificationReviewRequired && styles.verificationRow, mobileList && transaction.classificationReviewRequired && styles.mobileVerificationRow, pressed && styles.pressed]}>
       {!mobileList && direction !== 'neutral' && <View style={[styles.directionIndicator, transaction.classificationReviewRequired && styles.verificationIndicator, { backgroundColor: directionColor }]} />}
@@ -98,6 +99,7 @@ const styles = StyleSheet.create({
   receiverCell: { flex: 1.1, minWidth: 120, gap: 2 },
   categoryCell: { width: '14%', minWidth: 100, color: colors.slateDark },
   notesCell: { width: '15%', minWidth: 110, color: colors.slate },
+  creatorCell: { width: '10%', minWidth: 88, color: colors.slateDark },
   cellMeta: { color: colors.slate, fontSize: 10 },
   amountWrap: { alignItems: 'flex-end', gap: 2, minWidth: 92 },
   mobileAmountWrap: { minWidth: 84, maxWidth: 112 },

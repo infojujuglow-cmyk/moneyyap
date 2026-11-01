@@ -211,7 +211,7 @@ export default function ReportsScreen() {
     const accountMap = new Map(accounts.map((account) => [account.id, account.name]));
     const categoryMap = new Map(categories.map((category) => [category.id, category.name]));
     const quote = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
-    const rows = [['Date', 'Type', 'Counterparty', 'Amount', 'Currency', 'From account', 'To account', 'Category', 'Notes'], ...periodTransactions.map((transaction) => [transaction.transactionDate, transaction.type, transaction.counterpartyName ?? transaction.merchant ?? '', transaction.amount, transaction.currency, accountMap.get(transaction.accountFromId ?? '') ?? '', accountMap.get(transaction.accountToId ?? '') ?? '', categoryMap.get(transaction.categoryId ?? '') ?? '', transaction.notes ?? ''])];
+    const rows = [['Date', 'Type', 'Counterparty', 'Amount', 'Currency', 'From account', 'To account', 'Category', 'Notes', 'Added by'], ...periodTransactions.map((transaction) => [transaction.transactionDate, transaction.type, transaction.counterpartyName ?? transaction.merchant ?? '', transaction.amount, transaction.currency, accountMap.get(transaction.accountFromId ?? '') ?? '', accountMap.get(transaction.accountToId ?? '') ?? '', categoryMap.get(transaction.categoryId ?? '') ?? '', transaction.notes ?? '', transaction.createdByName])];
     const csv = rows.map((row) => row.map(quote).join(',')).join('\n');
     const documentRef = (globalThis as typeof globalThis & { document?: Document }).document;
     if (!documentRef) return;

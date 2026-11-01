@@ -38,7 +38,10 @@ const mapCounterparty = (row: Record<string, unknown>): Counterparty => ({
   defaultClassification: row.default_classification as Counterparty['defaultClassification'],
 });
 
-const mapTransaction = (row: Record<string, unknown>, reconciliations: TransactionReconciliation[] = []): Transaction => ({
+const mapTransaction = (row: Record<string, unknown>, reconciliations: TransactionReconciliation[] = []): Transaction => {
+  const creatorRelation = Array.isArray(row.created_by_profile) ? row.created_by_profile[0] : row.created_by_profile;
+  const creator = creatorRelation && typeof creatorRelation === 'object' ? creatorRelation as { full_name?: string } : null;
+  return {
   id: String(row.id), type: row.type as Transaction['type'], amount: Number(row.amount), currency: String(row.currency),
   financialEffect: (row.financial_effect ?? (row.type === 'expense' ? 'expense' : row.type === 'income' || row.type === 'refund' ? 'income' : 'internal_transfer')) as Transaction['financialEffect'],
   paymentRail: (row.payment_rail ?? 'unknown') as Transaction['paymentRail'],
@@ -52,10 +55,13 @@ const mapTransaction = (row: Record<string, unknown>, reconciliations: Transacti
   referenceNumber: row.reference_number as string | null, rawExtraction: row.raw_extraction as Record<string, unknown> | null,
   classificationReviewRequired: Boolean(row.classification_review_required),
   businessClassification: (row.business_classification ?? 'operating') as Transaction['businessClassification'],
+  createdByUserId: String(row.created_by),
+  createdByName: creator?.full_name?.trim() || 'Workspace member',
   reconciliations,
   aiParsed: Boolean(row.ai_parsed),
   aiConfidence: row.ai_confidence == null ? null : Number(row.ai_confidence), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
-});
+  };
+};
 
 const activeWorkspaceKey = (userId: string) => `moneyyap.active-workspace.${userId}`;
 
@@ -101,7 +107,7 @@ export const loadFinanceSnapshot = async (knownWorkspaceId: string): Promise<Fin
   const [accountResult, categoryResult, transactionResult, counterpartyResult, memberResult, spaceResult, tagResult, reconciliationResult] = await Promise.all([
     supabase.from('account_balances').select('*').eq('workspace_id', workspaceId),
     supabase.from('categories').select('*').eq('workspace_id', workspaceId).order('sort_order'),
-    supabase.from('transactions').select('*,transaction_tags(tag_id)').eq('workspace_id', workspaceId).order('transaction_date', { ascending: false }),
+    supabase.from('transactions').select('*,transaction_tags(tag_id),created_by_profile:profiles!transactions_created_by_fkey(full_name)').eq('workspace_id', workspaceId).order('transaction_date', { ascending: false }),
     supabase.from('counterparties').select('id,display_name,type,default_category_id,default_classification').eq('workspace_id', workspaceId).order('display_name'),
     supabase.from('workspace_members').select('user_id,role,profiles(full_name)').eq('workspace_id', workspaceId),
     supabase.from('spaces').select('*').eq('workspace_id', workspaceId).order('sort_order'),

@@ -66,7 +66,7 @@ export default function AccountDetailScreen() {
     if (reconciliationFilter === 'reconciled' && !isTransactionReconciled(item, account.id)) return false;
     if (search) {
       const categoryName = categories.find((candidate) => candidate.id === item.categoryId)?.name ?? '';
-      if (!`${item.counterpartyName ?? ''} ${item.merchant ?? ''} ${categoryName} ${item.notes ?? ''} ${item.originalMessage ?? ''}`.toLocaleLowerCase().includes(search)) return false;
+      if (!`${item.counterpartyName ?? ''} ${item.merchant ?? ''} ${categoryName} ${item.notes ?? ''} ${item.originalMessage ?? ''} ${item.createdByName}`.toLocaleLowerCase().includes(search)) return false;
     }
     return true;
   });
@@ -118,7 +118,7 @@ export default function AccountDetailScreen() {
       </View>
       {unreconciledMatching.length > 0 && <View style={styles.reconciliationActions}><Button label={`Reconcile ${unreconciledMatching.length} matching for ${account.name}`} variant="secondary" icon="checkmark-done-outline" onPress={() => setReconcileOpen(true)} /></View>}
       <Surface style={styles.list}>
-        {desktop && activity.length > 0 && <View style={styles.tableHeader}><AppText variant="eyebrow" style={styles.typeHeader}>TYPE</AppText><AppText variant="eyebrow" style={styles.accountHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.receiverHeader}>COUNTERPARTY / DESTINATION</AppText><AppText variant="eyebrow" style={styles.categoryHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.notesHeader}>NOTES</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText><AppText variant="eyebrow" style={styles.statusHeader}>✓</AppText></View>}
+        {desktop && activity.length > 0 && <View style={styles.tableHeader}><AppText variant="eyebrow" style={styles.typeHeader}>TYPE</AppText><AppText variant="eyebrow" style={styles.accountHeader}>ACCOUNT</AppText><AppText variant="eyebrow" style={styles.receiverHeader}>COUNTERPARTY / DESTINATION</AppText><AppText variant="eyebrow" style={styles.categoryHeader}>CATEGORY</AppText><AppText variant="eyebrow" style={styles.notesHeader}>NOTES</AppText><AppText variant="eyebrow" style={styles.creatorHeader}>ADDED BY</AppText><AppText variant="eyebrow" style={styles.amountHeader}>AMOUNT</AppText><AppText variant="eyebrow" style={styles.statusHeader}>✓</AppText></View>}
         {activity.length ? desktop ? transactionGroups.map((group) => <View key={group.key}><TransactionDateHeader transactionDate={group.transactionDate} />{group.items.map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, styles.desktopSeparator]} />}<TransactionRow transaction={item} desktop accountContextId={account.id} reconciliationAccountId={account.id} onPress={() => router.push(`/transaction/${item.id}`)} onToggleReconciled={() => void toggleReconciled(item.id)} reconciliationBusy={reconcilingId === item.id} /></View>)}</View>) : visibleActivity.map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, new Date(item.transactionDate).toDateString() !== new Date(visibleActivity[index - 1]?.transactionDate ?? item.transactionDate).toDateString() && styles.dateSeparator]} />}<TransactionRow transaction={item} compact accountContextId={account.id} reconciliationAccountId={account.id} onPress={() => router.push(`/transaction/${item.id}`)} onToggleReconciled={() => void toggleReconciled(item.id)} reconciliationBusy={reconcilingId === item.id} /></View>) : <EmptyState icon={allActivity.length && reconciliationFilter === 'unreconciled' ? 'checkmark-circle-outline' : allActivity.length ? 'search-outline' : 'receipt-outline'} title={allActivity.length && reconciliationFilter === 'unreconciled' ? 'Account reconciled' : allActivity.length ? 'No matching transactions' : 'No activity yet'} body={allActivity.length && reconciliationFilter === 'unreconciled' ? `Every matching ${account.name} transaction is reconciled.` : allActivity.length ? 'Try another filter or search.' : 'Transactions linked to this account will appear here.'} action={!allActivity.length && desktop && account.isActive ? <Button label="Add first transaction" icon="add" onPress={addTransaction} /> : undefined} />}
       </Surface>
       {visibleActivity.length < activity.length && <Button label={`Show more (${activity.length - visibleActivity.length} remaining)`} variant="secondary" onPress={() => setVisibleCount((count) => count + 50)} />}
@@ -159,6 +159,7 @@ const styles = StyleSheet.create({
   receiverHeader: { flex: 1.1, minWidth: 120, color: colors.slate },
   categoryHeader: { width: '14%', minWidth: 100, color: colors.slate },
   notesHeader: { width: '15%', minWidth: 110, color: colors.slate },
+  creatorHeader: { width: '10%', minWidth: 88, color: colors.slate },
   amountHeader: { minWidth: 92, textAlign: 'right', color: colors.slate },
   statusHeader: { width: 38, textAlign: 'center', color: colors.slate },
   reconciliationActions: { alignItems: 'flex-end' },

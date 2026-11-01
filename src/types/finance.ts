@@ -143,6 +143,8 @@ export interface Transaction {
   rawExtraction: Record<string, unknown> | null;
   classificationReviewRequired: boolean;
   businessClassification: BusinessClassification;
+  createdByUserId: string;
+  createdByName: string;
   reconciliations: TransactionReconciliation[];
   aiParsed: boolean;
   aiConfidence: number | null;

@@ -317,6 +317,8 @@ export function FinanceProvider({ children }: PropsWithChildren) {
       rawExtraction: draft.rawExtraction ?? null,
       classificationReviewRequired: draft.classificationReviewRequired ?? false,
       businessClassification: draft.businessClassification ?? 'operating',
+      createdByUserId: session.user.id,
+      createdByName: members.find((member) => member.id === session.user.id)?.fullName || 'You',
       reconciliations: [],
       aiParsed: Boolean(draft.originalMessage), aiConfidence: draft.originalMessage ? draft.confidence : null, createdAt: now, updatedAt: now,
     };
@@ -356,7 +358,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
     setAccounts((items) => applyTransactionToAccountBalances(items, transaction));
     setLastAdded(transaction);
     return transaction;
-  }, [accounts, categories, selectedSpaceId, session, spaces, workspaceId]);
+  }, [accounts, categories, members, selectedSpaceId, session, spaces, workspaceId]);
 
   const rememberOwnAccountMapping = useCallback(async (draft: ParsedTransactionDraft, accountId: string) => {
     if (!supabase || !workspaceId || !session?.user.id) throw new Error('MoneyYap is not connected to Supabase.');
