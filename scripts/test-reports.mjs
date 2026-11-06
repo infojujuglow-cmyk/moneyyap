@@ -71,3 +71,5 @@ assert.equal(trend.reduce((sum, point) => sum + point.income, 0), 2900);
 assert.equal(trend.reduce((sum, point) => sum + point.expense, 0), 700);
 
 console.log('reports: date filters, category and Space separation, transfer exclusions, refunds, trends, and as-of balances passed');
+await import('./test-report-comparisons.mjs');
+await import('./test-scheduled-transactions.mjs');

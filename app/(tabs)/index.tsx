@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { ChatComposer } from '@/components/ChatComposer';
 import { BarList } from '@/components/charts';
 import { Screen } from '@/components/Screen';
@@ -9,13 +9,20 @@ import { TransactionRow } from '@/components/TransactionRow';
 import { AppText, Avatar, Chip, IconCircle, SectionHeader, Surface } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
 import { useAuth } from '@/context/AuthContext';
+import { useScheduledData } from '@/hooks/useScheduledData';
 import { categoryTotals, monthToDateTotals, todayTotals, transactionsInSpace } from '@/services/analytics';
+import { plusDays, projectedOccurrences, projectedTotals, todayInTimezone } from '@/services/scheduled';
 import { amountColor, colors, formatCompactPeso, formatPeso, radii, spacing } from '@/theme';
 
 export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 1024;
-  const { transactions, categories, selectedSpaceId } = useFinance();
+  const { transactions, categories, selectedSpaceId, workspaceId } = useFinance();
+  const { data: scheduledData } = useScheduledData(workspaceId);
+  const scheduledToday = todayInTimezone(scheduledData?.timezone ?? 'Asia/Manila');
+  const scheduledItems = (scheduledData?.schedules ?? []).filter((schedule) => !selectedSpaceId || schedule.space_id === selectedSpaceId).flatMap((schedule) => projectedOccurrences(schedule, scheduledData?.occurrences ?? [], plusDays(scheduledToday, 30)));
+  const upcomingSchedules = scheduledItems.filter((item) => item.status === 'pending' && item.schedule.status === 'active').sort((a, b) => a.dueOn.localeCompare(b.dueOn));
+  const scheduledTotals = projectedTotals(scheduledItems, scheduledToday, plusDays(scheduledToday, 30));
   const { session } = useAuth();
   const fullName = typeof session?.user.user_metadata.full_name === 'string' && session.user.user_metadata.full_name.trim()
     ? session.user.user_metadata.full_name.trim()
@@ -58,6 +65,7 @@ export default function HomeScreen() {
     <Surface style={styles.categoryCard}>{topCategories.length ? <BarList items={topCategories} total={month.spending} /> : <AppText style={styles.emptyCardText}>No spending categories yet this month.</AppText>}</Surface>
   </View>;
   const recent = <View style={styles.section}><SectionHeader title="Recent activity" action="View all" onAction={() => router.push('/(tabs)/transactions')} /><Surface style={styles.listCard}>{visibleTransactions.length ? visibleTransactions.slice(0, 5).map((item, index) => <View key={item.id}>{index > 0 && <View style={[styles.separator, new Date(item.transactionDate).toDateString() !== new Date(visibleTransactions[index - 1]?.transactionDate ?? item.transactionDate).toDateString() && styles.dateSeparator]} />}<TransactionRow transaction={item} compact onPress={() => router.push(`/transaction/${item.id}`)} /></View>) : <AppText style={styles.emptyCardText}>Your recent activity will appear here.</AppText>}</Surface></View>;
+  const scheduled = <View style={styles.section}><SectionHeader title="Upcoming transactions" action="View Scheduled" onAction={() => router.push('/scheduled' as never)} /><Surface style={styles.monthCard}><View style={styles.monthMetrics}><View style={styles.monthMetric}><AppText variant="caption" style={styles.monthLabel}>SCHEDULED EXPENSES</AppText><AppText variant="bodyMedium" style={{ color: colors.expense }}>{formatCompactPeso(scheduledTotals.expenses)}</AppText></View><View style={styles.monthMetric}><AppText variant="caption" style={styles.monthLabel}>UPCOMING INCOME</AppText><AppText variant="bodyMedium" style={{ color: colors.income }}>{formatCompactPeso(scheduledTotals.income)}</AppText></View></View>{upcomingSchedules.slice(0, 3).map((item) => <Pressable key={item.schedule.id + ':' + item.number} onPress={() => router.push('/scheduled' as never)} style={styles.scheduledRow}><AppText variant="caption" style={{ flex: 1 }}>{item.schedule.name}</AppText><AppText variant="caption" style={styles.monthLabel}>{item.dueOn < scheduledToday ? 'Overdue' : item.dueOn}</AppText><AppText variant="caption">{formatPeso(item.occurrence?.amount_override ?? item.schedule.amount)}</AppText></Pressable>)}{!upcomingSchedules.length && <AppText variant="caption" style={styles.monthLabel}>No upcoming transactions in the next 30 days.</AppText>}</Surface></View>;
   return (
     <Screen contentStyle={desktop ? styles.wideContent : undefined}>
       <View style={[styles.greeting, desktop && styles.desktopGreeting]}>
@@ -67,7 +75,7 @@ export default function HomeScreen() {
 
       <SpaceSelector />
 
-      {desktop ? <View style={styles.desktopGrid}><View style={styles.desktopMain}>{hero}{monthly}{recent}</View><View style={styles.desktopSide}>{talk}{category}</View></View> : <>{hero}{talk}{monthly}{category}{recent}</>}
+      {desktop ? <View style={styles.desktopGrid}><View style={styles.desktopMain}>{hero}{monthly}{scheduled}{recent}</View><View style={styles.desktopSide}>{talk}{category}</View></View> : <>{hero}{talk}{monthly}{scheduled}{category}{recent}</>}
     </Screen>
   );
 }
@@ -98,6 +106,7 @@ const styles = StyleSheet.create({
   subtle: { color: colors.slate, marginTop: 2 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   section: { gap: spacing.md },
+  scheduledRow: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   monthCard: { padding: spacing.lg, gap: spacing.md },
   monthMetrics: { flexDirection: 'row' },
   monthMetric: { flex: 1, gap: 2, borderRightWidth: 1, borderRightColor: colors.border, paddingRight: spacing.sm },

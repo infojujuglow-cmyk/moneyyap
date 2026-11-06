@@ -20,6 +20,7 @@ export default function AddScreen() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [suggestedActions, setSuggestedActions] = useState<string[]>([]);
+  const [scheduleDraft, setScheduleDraft] = useState<Record<string, unknown> | null>(null);
   const [userMessage, setUserMessage] = useState<string | null>(null);
   const [attachment, setAttachment] = useState<TransactionImageAttachment | null>(null);
   const [analysis, setAnalysis] = useState<ImageTransactionAnalysis | null>(null);
@@ -60,6 +61,7 @@ export default function AddScreen() {
     setUserMessage(message);
     setAttachment(null);
     setDrafts([]);
+    setScheduleDraft(null);
     setSaved({});
     setAnalysis(null);
     setError(null);
@@ -69,6 +71,7 @@ export default function AddScreen() {
       setConversationId(result.conversationId);
       setMessages(result.messages);
       setSuggestedActions(result.suggestedActions);
+      setScheduleDraft(result.queryResult?.schedule_draft && typeof result.queryResult.schedule_draft === 'object' ? result.queryResult.schedule_draft as Record<string, unknown> : null);
       setUserMessage(null);
       if (result.drafts.length) {
         setDrafts(result.drafts);
@@ -354,7 +357,8 @@ export default function AddScreen() {
             {error && <View style={styles.error}><Ionicons name="alert-circle-outline" size={20} color={colors.danger} /><AppText style={styles.errorText}>{error}</AppText></View>}
             {!allSaved && drafts.map((draft, index) => <View key={`${draft.transactionDate}-${index}`} style={styles.draftWrap}>{drafts.length > 1 && <AppText variant="eyebrow" style={styles.draftLabel}>TRANSACTION {index + 1} OF {drafts.length}</AppText>}<ParsedCard draft={draft} status={saved[index] ? 'saved' : 'draft'} saving={savingIndex === index} onConfirm={() => saveAt(index)} onOwnershipSelect={(ownership) => chooseOwnership(index, ownership)} onAccountSelect={(accountId) => chooseAccount(index, accountId)} onCategorySelect={(categoryId) => chooseCategory(index, categoryId)} onSpaceSelect={(spaceId) => chooseSpace(index, spaceId)} onUndo={() => undoAt(index)} onEdit={() => saved[index] ? router.push(`/transaction/${saved[index]!.id}`) : editDraft(draft)} /></View>)}
             {allSaved && <View style={[styles.assistantBubble, styles.savedReply]}><View style={styles.savedReplyHeader}><Ionicons name="checkmark-circle" size={18} color={colors.mintDeep} /><AppText variant="bodyMedium" style={styles.savedReplyTitle}>Added to MoneyYap</AppText></View><AppText style={styles.assistantText}>{savedReply}</AppText><View style={styles.savedEditRow}>{savedTransactions.map((transaction, index) => <Pressable key={transaction.id} onPress={() => router.push(`/transaction/${transaction.id}`)} style={styles.savedEditButton}><Ionicons name="create-outline" size={15} color={colors.mintDeep} /><AppText variant="caption" style={styles.savedEditText}>{savedTransactions.length === 1 ? 'Edit' : `Edit ${index + 1}`}</AppText></Pressable>)}</View></View>}
-            {suggestedActions.length > 0 && !drafts.length && <View style={styles.suggestions}>{suggestedActions.map((action) => <Chip key={action} label={action} onPress={() => action === 'View transactions' ? router.push('/(tabs)/transactions') : handleSend(action)} />)}</View>}
+            {scheduleDraft && <View style={styles.suggestions}><Chip label="Review schedule" icon="calendar-outline" onPress={() => router.push({ pathname: '/scheduled' as never, params: { draft: JSON.stringify(scheduleDraft) } })} /></View>}
+            {suggestedActions.length > 0 && !drafts.length && !scheduleDraft && <View style={styles.suggestions}>{suggestedActions.map((action) => <Chip key={action} label={action} onPress={() => action === 'View transactions' ? router.push('/(tabs)/transactions') : handleSend(action)} />)}</View>}
             {allSaved && <Pressable onPress={reset} style={styles.addAnother}><Ionicons name="add-circle-outline" size={19} color={colors.mintDeep} /><AppText variant="bodyMedium" style={styles.addAnotherText}>Add another</AppText></Pressable>}
           </>
         )}

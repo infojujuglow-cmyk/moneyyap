@@ -11,7 +11,11 @@ export type ReportKey =
   | 'trends'
   | 'budget'
   | 'payees'
-  | 'net_worth';
+  | 'net_worth'
+  | 'compare_months'
+  | 'compare_years'
+  | 'this_year'
+  | 'scheduled_projection';
 
 export interface ReportNavigationItem {
   key: ReportKey;
@@ -21,6 +25,10 @@ export interface ReportNavigationItem {
 
 export const primaryReportItems: ReportNavigationItem[] = [
   { key: 'overview', label: 'Overview', icon: 'sparkles-outline' },
+  { key: 'compare_months', label: 'Compare Months', icon: 'git-compare-outline' },
+  { key: 'compare_years', label: 'Compare Years', icon: 'calendar-outline' },
+  { key: 'this_year', label: 'This Year', icon: 'bar-chart-outline' },
+  { key: 'scheduled_projection', label: 'Upcoming Cash Flow', icon: 'calendar-outline' },
   { key: 'expenses', label: 'Expenses by Category', icon: 'pie-chart-outline' },
   { key: 'income', label: 'Income by Category', icon: 'trending-up-outline' },
   { key: 'expenses_by_space', label: 'Expenses by Space', icon: 'grid-outline' },

@@ -5,11 +5,13 @@ import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AnalyticsRangeSheet } from '@/components/AnalyticsRangeSheet';
 import { CashFlowChart, DonutChart, SpendLineChart } from '@/components/charts';
+import { ReportComparisons } from '@/components/ReportComparisons';
 import { Screen } from '@/components/Screen';
 import { SmartSelectSheet } from '@/components/SmartSelectSheet';
 import { SpaceSelector } from '@/components/SpaceSelector';
 import { AppText, Button, Chip } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
+import { useScheduledData } from '@/hooks/useScheduledData';
 import { isReportKey, reportItems, reportLabel, type ReportKey } from '@/lib/reports';
 import {
   accountBalancesAsOf,
@@ -28,6 +30,7 @@ import {
   type SpaceReportItem,
 } from '@/services/analytics';
 import { colors, formatCompactPeso, formatPeso, radii, reportCategoryColors, spacing, typography } from '@/theme';
+import { plusDays, projectedAccountCashFlow, projectedOccurrences, projectedTotals, todayInTimezone } from '@/services/scheduled';
 import type { Account, Category, CategoryType, Space, Transaction } from '@/types/finance';
 
 type Palette = { background: string; card: string; elevated: string; border: string; text: string; muted: string };
@@ -174,7 +177,8 @@ export default function ReportsScreen() {
   const desktop = Platform.OS === 'web' && width >= 1024;
   const dark = useColorScheme() === 'dark';
   const palette = paletteFor(dark);
-  const { transactions, categories, accounts, spaces, selectedSpaceId, isLoading } = useFinance();
+  const { transactions, categories, accounts, spaces, selectedSpaceId, workspaceId, isLoading } = useFinance();
+  const { data: scheduledData, loading: scheduledLoading, error: scheduledError } = useScheduledData(workspaceId);
   const report: ReportKey = isReportKey(params.report) ? params.report : 'overview';
   const [rangeKey, setRangeKey] = useState<AnalyticsRangeKey>('this_month');
   const [customRange, setCustomRange] = useState<AnalyticsCustomRange | null>(null);
@@ -223,6 +227,13 @@ export default function ReportsScreen() {
 
   const renderReport = () => {
     if (isLoading) return <ReportCard palette={palette}><View style={styles.loading}><ActivityIndicator color={colors.mintDark} /><AppText style={{ color: palette.muted }}>Loading your reports…</AppText></View></ReportCard>;
+    if (report === 'scheduled_projection') {
+      const today = todayInTimezone(scheduledData?.timezone ?? 'Asia/Manila');
+      const scheduled = (scheduledData?.schedules ?? []).filter((schedule) => (!selectedSpaceId || schedule.space_id === selectedSpaceId)).flatMap((schedule) => projectedOccurrences(schedule, scheduledData?.occurrences ?? [], plusDays(today, 200)));
+      const months = Array.from({ length: 6 }, (_, index) => { const startDate = new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1 + index, 1); const start = new Date(Date.UTC(startDate.getFullYear(), startDate.getMonth(), 1)).toISOString().slice(0, 10); const end = new Date(Date.UTC(startDate.getFullYear(), startDate.getMonth() + 1, 0)).toISOString().slice(0, 10); const periodStart = index === 0 ? today : start; const values = accountId ? projectedAccountCashFlow(scheduled, accountId, periodStart, end) : projectedTotals(scheduled, periodStart, end); return { label: startDate.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' }), incoming: 'incoming' in values ? values.incoming : values.income, outgoing: 'outgoing' in values ? values.outgoing : values.expenses }; });
+      return <View style={styles.reportStack}><View style={styles.reportHeader}><AppText variant="h2" style={{ color: palette.text }}>Upcoming Cash Flow</AppText><AppText variant="caption" style={{ color: palette.muted }}>Estimated from pending schedules. {accountId ? 'Account movements include transfers and card payments.' : 'Transfers and card payments are excluded from income and expenses.'} Actual reports and balances still use recorded transactions only.</AppText></View>{scheduledLoading ? <ActivityIndicator color={colors.mintDeep} /> : scheduledError ? <ReportCard palette={palette}><AppText style={{ color: colors.expense }}>{scheduledError}</AppText></ReportCard> : <ReportCard palette={palette}>{months.map((month) => <View key={month.label} style={styles.projectionRow}><AppText variant="bodyMedium" style={{ color: palette.text, flex: 1 }}>{month.label}</AppText><View><AppText variant="caption" style={{ color: colors.income }}>{accountId ? 'Money in' : 'Income'} {formatPeso(month.incoming)}</AppText><AppText variant="caption" style={{ color: colors.expense }}>{accountId ? 'Money out' : 'Expenses'} {formatPeso(month.outgoing)}</AppText></View><AppText variant="bodyMedium" style={{ color: month.incoming - month.outgoing >= 0 ? colors.income : colors.expense }}>{formatPeso(month.incoming - month.outgoing)}</AppText></View>)}<Button label="View Scheduled" icon="calendar-outline" onPress={() => router.push('/scheduled' as never)} /></ReportCard>}</View>;
+    }
+    if (report === 'compare_months' || report === 'compare_years' || report === 'this_year') return <View style={styles.reportStack}><View style={styles.reportHeader}><AppText variant="h2" style={{ color: palette.text }}>{reportLabel(report)}</AppText></View><ReportComparisons key={report} mode={report} transactions={accountTransactions} categories={categories.filter((category) => !selectedSpaceId || category.spaceId === selectedSpaceId)} palette={palette} desktop={desktop} /></View>;
     if (report === 'expenses' || report === 'income') return <View style={styles.reportStack}>{commonHeader}<CategoryReport type={report === 'income' ? 'income' : 'expense'} transactions={periodTransactions} categories={categories} accounts={accounts} spaceId={selectedSpaceId} palette={palette} desktop={desktop} viewportWidth={width} /></View>;
     if (report === 'expenses_by_space' || report === 'income_by_space') return <View style={styles.reportStack}>{commonHeader}<SpaceReport key={report} type={report === 'income_by_space' ? 'income' : 'expense'} transactions={periodTransactions} spaces={spaces} palette={palette} /></View>;
     if (report === 'overview') return <View style={styles.reportStack}>{commonHeader}<View style={styles.metrics}><MetricCard label="INCOME" amount={totals.income} tone="income" icon="arrow-down" palette={palette} /><MetricCard label="EXPENSES" amount={totals.spending} tone="expense" icon="arrow-up" palette={palette} /><MetricCard label="NET CASH FLOW" amount={totals.netCashFlow} tone={totals.netCashFlow >= 0 ? 'income' : 'expense'} icon="swap-vertical" palette={palette} /><MetricCard label="NET WORTH" amount={netWorth} tone="neutral" icon="diamond-outline" palette={palette} /></View><ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>MONEY IN VS MONEY OUT</AppText><AppText variant="h3" style={{ color: palette.text }}>Cash flow</AppText></View><View style={styles.legendInline}><View style={[styles.colorDot, { backgroundColor: colors.income }]} /><AppText variant="caption" style={{ color: palette.muted }}>Income</AppText><View style={[styles.colorDot, { backgroundColor: colors.expense }]} /><AppText variant="caption" style={{ color: palette.muted }}>Expenses</AppText></View></View>{totals.income || totals.spending ? <CashFlowChart data={series} width={chartWidth} height={220} /> : <ReportEmpty icon="pulse-outline" title="No cash flow yet" body="Transactions in this period will appear here." palette={palette} />}</ReportCard><ReportCard palette={palette}><View style={styles.cardHeading}><View><AppText variant="eyebrow" style={{ color: palette.muted }}>AS OF {range.rangeLabel.toUpperCase()}</AppText><AppText variant="h3" style={{ color: palette.text }}>Account snapshot</AppText></View><Pressable onPress={() => selectReport('balances')}><AppText variant="bodyMedium" style={{ color: colors.mintDeep }}>View all</AppText></Pressable></View>{balanceRows.length ? <AccountRows accounts={balanceRows.slice(0, 5)} palette={palette} onSelect={(account) => router.push(`/account/${account.id}`)} /> : <ReportEmpty icon="wallet-outline" title="No accounts" body="Add an account to see balances here." palette={palette} />}</ReportCard></View>;
@@ -235,7 +246,7 @@ export default function ReportsScreen() {
   };
 
   return <Screen title="Reports" subtitle="A clear view of where your money goes" contentStyle={[styles.wideContent, { backgroundColor: palette.background }]} backgroundColor={palette.background} titleColor={palette.text} subtitleColor={palette.muted} right={!desktop ? <Pressable onPress={() => setReportPickerOpen(true)} style={[styles.mobilePickerButton, { backgroundColor: palette.card, borderColor: palette.border }]}><Ionicons name="pie-chart-outline" size={18} color={colors.mintDeep} /><AppText variant="caption" style={{ color: palette.text }} numberOfLines={1}>{reportLabel(report)}</AppText><Ionicons name="chevron-down" size={16} color={palette.muted} /></Pressable> : undefined}>
-    <View style={styles.filterBar}><SpaceSelector /><View style={styles.filterActions}><Chip label={`${range.label} · ${range.rangeLabel}`} icon="calendar-outline" selected onPress={() => setRangeOpen(true)} /><Chip label={selectedAccount?.name ?? 'All accounts'} icon="wallet-outline" selected={Boolean(accountId)} onPress={() => setAccountFilterOpen(true)} /></View></View>
+    <View style={styles.filterBar}><SpaceSelector /><View style={styles.filterActions}>{report !== 'compare_months' && report !== 'compare_years' && report !== 'this_year' && report !== 'scheduled_projection' && <Chip label={`${range.label} · ${range.rangeLabel}`} icon="calendar-outline" selected onPress={() => setRangeOpen(true)} />}<Chip label={selectedAccount?.name ?? 'All accounts'} icon="wallet-outline" selected={Boolean(accountId)} onPress={() => setAccountFilterOpen(true)} /></View></View>
     <View style={styles.reportMain}>{renderReport()}</View>
     <AnalyticsRangeSheet visible={rangeOpen} selectedKey={rangeKey} customRange={customRange} onClose={() => setRangeOpen(false)} onSelect={chooseRange} />
     <SmartSelectSheet visible={accountFilterOpen} title="Filter by account" options={[{ id: '__all__', label: 'All accounts', color: colors.mint }, ...relevantAccounts.map((account) => ({ id: account.id, label: account.name, detail: account.institution ?? account.type.replaceAll('_', ' '), searchText: accountLabel(account), color: account.accent }))]} selectedIds={[accountId ?? '__all__']} onClose={() => setAccountFilterOpen(false)} onSelect={(id) => setAccountId(id === '__all__' ? null : id)} searchPlaceholder="Search accounts" />
@@ -315,6 +326,7 @@ const styles = StyleSheet.create({
   emptyIcon: { width: 58, height: 58, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   emptyBody: { textAlign: 'center', maxWidth: 480 },
   loading: { minHeight: 250, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
+  projectionRow: { minHeight: 70, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: spacing.sm },
   mobilePickerButton: { maxWidth: 210, minHeight: 40, borderWidth: 1, borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(8, 12, 18, 0.5)' },
   mobileSheet: { maxHeight: '84%', borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, paddingHorizontal: spacing.xl, paddingBottom: spacing.lg },

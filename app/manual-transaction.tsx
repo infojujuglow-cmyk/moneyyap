@@ -8,7 +8,9 @@ import { SmartSelectField, SmartSelectSheet, type SmartSelectOption } from '@/co
 import { TransactionDateTimeField } from '@/components/TransactionDateTimeField';
 import { AppText, Button } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
+import { useScheduledData } from '@/hooks/useScheduledData';
 import { isTransactionReconciled, reconciliationDate, transactionAccountIds } from '@/lib/reconciliation';
+import { recordOccurrence } from '@/services/scheduled';
 import { colors, radii, spacing, typography } from '@/theme';
 import type { Account, BusinessClassification, Category, ParsedTransactionDraft, PaymentRail, Transaction, TransactionType } from '@/types/finance';
 
@@ -74,7 +76,8 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const params = useLocalSearchParams<{ draft?: string; accountId?: string; spaceId?: string }>();
   const { width, height } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 700;
-  const { accounts, categories, counterparties, members, spaces, tags, transactions, selectedSpaceId, setSelectedSpaceId, saveDraft, updateTransaction, setTransactionsReconciled, deleteTransaction } = useFinance();
+  const { accounts, categories, counterparties, members, spaces, tags, transactions, selectedSpaceId, workspaceId, setSelectedSpaceId, saveDraft, updateTransaction, setTransactionsReconciled, deleteTransaction } = useFinance();
+  const { data: scheduledData } = useScheduledData(workspaceId);
   const editingTransaction = transactions.find((transaction) => transaction.id === editTransactionId);
   const activeAccounts = useMemo(() => accounts.filter((item) => item.isActive || item.id === editingTransaction?.accountFromId || item.id === editingTransaction?.accountToId), [accounts, editingTransaction]);
   const activeSpaces = useMemo(() => spaces.filter((item) => !item.isArchived || item.id === editingTransaction?.spaceId), [editingTransaction, spaces]);
@@ -135,6 +138,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
   const [moreOpen, setMoreOpen] = useState(Boolean(initialDraft?.notes || initialDraft?.paymentRail && initialDraft.paymentRail !== 'unknown' || initialDraft?.tagIds?.length || initialDraft?.businessClassification && initialDraft.businessClassification !== 'operating' || editingTransaction?.reconciliations.length));
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [scheduleMatch, setScheduleMatch] = useState<{ occurrenceId: string; name: string; dueOn: string; transactionId: string } | null>(null);
   const [reconciliationBusyAccountId, setReconciliationBusyAccountId] = useState<string | null>(null);
   const [unreconcileAccountId, setUnreconcileAccountId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -271,7 +275,15 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
           classificationReviewRequired: forVerification,
           businessClassification: draft.businessClassification ?? 'operating',
         });
-      } else await saveDraft(draft);
+      } else {
+        const saved = await saveDraft(draft);
+        const match = (scheduledData?.occurrences ?? []).filter((item) => item.status === 'pending').map((occurrence) => ({ occurrence, schedule: scheduledData?.schedules.find((schedule) => schedule.id === occurrence.schedule_id) })).find(({ occurrence, schedule }) => schedule?.status === 'active' && schedule.type === saved.type && schedule.space_id === saved.spaceId &&
+          Math.abs((occurrence.amount_override ?? schedule.amount) - saved.amount) < 0.01 &&
+          Math.abs(new Date(occurrence.due_on + 'T12:00:00').getTime() - new Date(saved.transactionDate).getTime()) <= 7 * 86400000 &&
+          (occurrence.account_from_override ?? schedule.account_from_id) === saved.accountFromId &&
+          (occurrence.account_to_override ?? schedule.account_to_id) === saved.accountToId);
+        if (match?.schedule) { setScheduleMatch({ occurrenceId: match.occurrence.id, name: match.schedule.name, dueOn: match.occurrence.due_on, transactionId: saved.id }); return; }
+      }
       router.back();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to save this transaction.');
@@ -403,6 +415,7 @@ export default function ManualTransactionScreen({ editTransactionId }: { editTra
       </KeyboardAvoidingView>
       <SmartSelectSheet visible={picker !== null} title={sheetConfig.title} options={sheetConfig.options} selectedIds={sheetConfig.ids} searchPlaceholder={sheetConfig.placeholder} multiple={picker === 'tags'} hierarchical={picker === 'category'} onClose={() => setPicker(null)} onSelect={handleSheetSelect} />
       {editingTransaction && <ConfirmActionDialog visible={deleteOpen} title="Delete this transaction?" message="It will be removed from your workspace history and analytics." confirmLabel="Delete transaction" onClose={() => setDeleteOpen(false)} onConfirm={async () => { await deleteTransaction(editingTransaction.id); router.back(); }} />}
+      <ConfirmActionDialog visible={scheduleMatch !== null} title="Link to scheduled transaction?" message={scheduleMatch ? `This looks like ${scheduleMatch.name}, due ${scheduleMatch.dueOn}. Link the transaction you just saved to that occurrence? No second ledger entry will be created.` : ''} confirmLabel="Link transaction" confirmVariant="primary" onClose={() => { setScheduleMatch(null); router.back(); }} onConfirm={async () => { if (scheduleMatch) await recordOccurrence(scheduleMatch.occurrenceId, { existingTransactionId: scheduleMatch.transactionId }); }} />
       {editingTransaction && <ConfirmActionDialog visible={Boolean(unreconcileAccountId)} title="Undo reconciliation?" message={`This will mark the ${accounts.find((account) => account.id === unreconcileAccountId)?.name ?? 'selected account'} side of this transaction as unreconciled. Only continue if you need to correct a confirmed reconciliation.`} confirmLabel="Mark unreconciled" onClose={() => setUnreconcileAccountId(null)} onConfirm={confirmUnreconcile} />}
     </View>
   );

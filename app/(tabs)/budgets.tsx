@@ -18,6 +18,7 @@ import { Screen } from '@/components/Screen';
 import { TransactionRow } from '@/components/TransactionRow';
 import { AppText, Button, EmptyState, IconCircle, Surface } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
+import { useScheduledData } from '@/hooks/useScheduledData';
 import { getErrorMessage } from '@/lib/errors';
 import {
   budgetMonthKey,
@@ -31,6 +32,7 @@ import {
 } from '@/lib/budgets';
 import { supabase } from '@/lib/supabase';
 import { loadMonthlyBudget, loadTransactionSplits, saveMonthlyBudget } from '@/services/budgets';
+import { projectedOccurrences, projectedTotals } from '@/services/scheduled';
 import { colors, formatPeso, radii, shadows, spacing, typography } from '@/theme';
 import type { BudgetAllocation, Category, MonthlyBudget, Space, Transaction, TransactionSplit } from '@/types/finance';
 
@@ -46,6 +48,7 @@ export default function BudgetsScreen() {
   const { width } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && width >= 1024;
   const { categories, isLoading: financeLoading, refreshFinance, spaces, transactions, workspaceId } = useFinance();
+  const { data: scheduledData } = useScheduledData(workspaceId);
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [budget, setBudget] = useState<MonthlyBudget | null>(null);
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
@@ -99,6 +102,9 @@ export default function BudgetsScreen() {
     () => buildBudgetSnapshot(categories, budget?.allocations ?? [], transactions, splits, month),
     [budget?.allocations, categories, month, splits, transactions],
   );
+  const monthEnd = new Date(Date.UTC(month.getFullYear(), month.getMonth() + 1, 0)).toISOString().slice(0, 10);
+  const scheduledItems = (scheduledData?.schedules ?? []).flatMap((schedule) => projectedOccurrences(schedule, scheduledData?.occurrences ?? [], monthEnd));
+  const scheduledExpenses = projectedTotals(scheduledItems, monthKey + '-01', monthEnd).expenses;
   const visibleRows = useMemo(
     () => snapshot.rows.filter((row) => row.allocated !== 0 || row.spent !== 0),
     [snapshot.rows],
@@ -181,6 +187,8 @@ export default function BudgetsScreen() {
             <BudgetMetric label="MONTHLY BUDGET" value={snapshot.totalAllocated} icon="wallet-outline" color={colors.mintDeep} background={colors.mintWash} />
             <BudgetMetric label="SPENT" value={snapshot.totalSpent} icon="arrow-up-outline" color={colors.expense} background={colors.expenseWash} />
             <BudgetMetric label="REMAINING" value={snapshot.remaining} icon="sparkles-outline" color={snapshot.remaining >= 0 ? colors.income : colors.expense} background={snapshot.remaining >= 0 ? colors.incomeWash : colors.expenseWash} />
+            <BudgetMetric label="SCHEDULED · ESTIMATE" value={scheduledExpenses} icon="calendar-outline" color={colors.slateDark} background={colors.mintWash} />
+            <BudgetMetric label="PROJECTED REMAINING" value={snapshot.remaining - scheduledExpenses} icon="trending-down-outline" color={snapshot.remaining - scheduledExpenses >= 0 ? colors.income : colors.expense} background={snapshot.remaining - scheduledExpenses >= 0 ? colors.incomeWash : colors.expenseWash} />
           </View>
 
           <Surface style={styles.overallCard}>

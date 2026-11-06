@@ -130,6 +130,61 @@ const localQueryPatch = (message: string, accounts: Entity[], categories: Entity
 const expandCategoryIds = (rootId: string | undefined, categories: Entity[]) => { if (!rootId) return []; const result = new Set([rootId]); let changed = true; while (changed) { changed = false; for (const item of categories) if (item.parent_id && result.has(item.parent_id) && !result.has(item.id)) { result.add(item.id); changed = true; } } return [...result]; };
 const previousPeriod = (range: { start: string; end: string }) => { const start = new Date(range.start); const end = new Date(range.end); const duration = end.getTime() - start.getTime(); return { start: new Date(start.getTime() - duration).toISOString(), end: start.toISOString() }; };
 
+const reportInsight = async (supabase: { from: (table: string) => any }, workspaceId: string, message: string, context: FinanceQueryContext, accounts: Entity[], categories: Entity[], now: Date, timeZone: string) => {
+  const text = normalize(message);
+  const asksTrend = /\b(monthly|month by month)\b/.test(text) && /\b(trend|spending|expenses|income)\b/.test(text) && /\b(year|202\d)\b/.test(text);
+  const asksIncrease = /\b(which categories|categories.*increas|category.*increas)\b/.test(text);
+  const asksComparison = /\b(compare|compared|increase|decrease|difference)\b/.test(text) && /\b(month|year|last|september|october|january|february|march|april|may|june|july|august|november|december)\b/.test(text);
+  if (!asksTrend && !asksIncrease && !asksComparison) return null;
+  const local = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(now);
+  const year = Number(local.find((part) => part.type === 'year')?.value);
+  const month = Number(local.find((part) => part.type === 'month')?.value);
+  const day = Number(local.find((part) => part.type === 'day')?.value);
+  const requestedYear = Number(text.match(/\b20\d{2}\b/)?.[0]) || year;
+  const monthMentions = Object.entries(monthNames).flatMap(([name, value]) => [...text.matchAll(new RegExp(`\\b${name}\\b`, 'g'))].map((match) => ({ name, value, position: match.index ?? 0 }))).sort((a, b) => a.position - b.position);
+  const explicitMonthYears = monthMentions.map((item) => ({ ...item, year: Number(text.slice(item.position + item.name.length).match(/^\s+(20\d{2})\b/)?.[1]) || requestedYear }));
+  const monthRange = (targetYear: number, targetMonth: number) => monthDateRange(targetYear, targetMonth, timeZone);
+  const yearRange = (targetYear: number) => ({ start: monthRange(targetYear, 1).start, end: monthRange(targetYear + 1, 1).start });
+  const currentMonth = monthRange(year, month);
+  const previousMonth = month === 1 ? monthRange(year - 1, 12) : monthRange(year, month - 1);
+  let periods: { label: string; start: string; end: string }[] = [];
+  if (asksTrend) periods = Array.from({ length: 12 }, (_, index) => ({ label: new Date(Date.UTC(requestedYear, index, 1)).toLocaleString('en-PH', { month: 'short', timeZone: 'UTC' }), ...monthRange(requestedYear, index + 1) }));
+  else if (/\blast year|compared to last year|year over year\b/.test(text) || (monthMentions.length === 0 && /\byear\b/.test(text))) {
+    const prior = yearRange(year - 1), current = yearRange(year);
+    const cutoff = new Date(monthRange(year - 1, month).start).getTime() + (day - 1) * 86400000 + (now.getTime() - new Date(currentMonth.start).getTime() - (day - 1) * 86400000);
+    periods = [{ label: `${year - 1} YTD`, start: prior.start, end: new Date(Math.min(cutoff, new Date(prior.end).getTime())).toISOString() }, { label: `${year} YTD`, start: current.start, end: now.toISOString() }];
+  } else if (explicitMonthYears.length >= 2) periods = explicitMonthYears.slice(0, 2).map((item) => ({ label: `${item.name} ${item.year}`, ...monthRange(item.year, item.value) }));
+  else if (explicitMonthYears.length === 1) { const item = explicitMonthYears[0]; const chosen = monthRange(item.year, item.value); const prior = item.value === 1 ? monthRange(item.year - 1, 12) : monthRange(item.year, item.value - 1); periods = [{ label: 'Previous month', ...prior }, { label: `${item.name} ${item.year}`, ...chosen }]; }
+  else periods = [{ label: 'Last month', ...previousMonth }, { label: 'This month (partial)', start: currentMonth.start, end: now.toISOString() }];
+  const allRows: FinanceTransactionRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    let query = supabase.from('transactions').select('id,type,financial_effect,business_classification,amount,transaction_date,account_from_id,account_to_id,category_id,merchant,counterparty_name,space_id').eq('workspace_id', workspaceId).order('transaction_date', { ascending: false }).range(from, from + 999);
+    if (context.spaceScope !== 'all' && context.spaceId) query = query.eq('space_id', context.spaceId);
+    const { data, error } = await query; if (error) throw error;
+    allRows.push(...(data ?? [])); if (!data || data.length < 1000) break;
+  }
+  const availableIds = accounts.filter((item) => context.spaceScope === 'all' || !context.spaceId || !item.space_id || item.space_id === context.spaceId).map((item) => item.id);
+  const allowedIds = context.accountIds === 'all' || !context.accountIds ? availableIds : context.accountIds.filter((id) => availableIds.includes(id));
+  const categoryIds = new Set(expandCategoryIds(context.categoryId, categories));
+  const scoped = allRows.filter((row) => ((row as FinanceTransactionRow & { business_classification?: string }).business_classification ?? 'operating') === 'operating' && (!categoryIds.size || Boolean(row.category_id && categoryIds.has(row.category_id))));
+  const effect = /\b(income|received|earnings)\b/.test(text) ? 'income' : 'expense';
+  const amounts = periods.map((period) => {
+    const end = new Date(period.end) > now ? now.toISOString() : period.end;
+    const rows = filterFinanceRows(scoped, { ...context, dateRange: { start: period.start, end }, transactionType: effect, categoryId: undefined }, allowedIds);
+    return { label: period.label, amount: sumFinanceRows(rows, effect), rows };
+  });
+  if (asksTrend) return { reply: `Monthly ${effect} trend for ${requestedYear}:\n${amounts.map((item, index) => `${item.label}: ${new Date(periods[index].start) > now ? 'No data yet' : peso.format(item.amount)}`).join('\n')}`, result: { metric: 'monthly_trend', breakdown: amounts.filter((_, index) => new Date(periods[index].start) <= now).map((item) => ({ label: item.label, amount: item.amount })) } };
+  if (asksIncrease) {
+    const byCategory = (rows: FinanceTransactionRow[]) => { const totals = new Map<string, number>(); rows.forEach((row) => { if (row.financial_effect !== 'expense' && row.type !== 'refund') return; let id = row.category_id ?? 'uncategorized'; const visited = new Set<string>(); while (categories.find((item) => item.id === id)?.parent_id && !visited.has(id)) { visited.add(id); id = categories.find((item) => item.id === id)!.parent_id!; } totals.set(id, (totals.get(id) ?? 0) + (row.type === 'refund' ? -Number(row.amount) : Number(row.amount))); }); return totals; };
+    const first = byCategory(amounts[0].rows), second = byCategory(amounts[1].rows);
+    const increases = [...second].map(([id, amount]) => ({ label: categories.find((item) => item.id === id)?.name ?? 'Uncategorized', amount: amount - (first.get(id) ?? 0) })).filter((item) => item.amount > 0).sort((a, b) => b.amount - a.amount);
+    return { reply: increases.length ? `Largest category increases, ${amounts[0].label} to ${amounts[1].label}:\n${increases.slice(0, 5).map((item) => `${item.label}: +${peso.format(item.amount)}`).join('\n')}` : 'No expense categories increased in the selected comparison.', result: { metric: 'category_increases', breakdown: increases } };
+  }
+  const difference = amounts[1].amount - amounts[0].amount;
+  const percentage = amounts[0].amount === 0 ? 'N/A' : `${(difference / Math.abs(amounts[0].amount) * 100).toFixed(1)}%`;
+  return { reply: `${effect === 'income' ? 'Income' : 'Expenses'} comparison${context.categoryId ? ` for ${categories.find((item) => item.id === context.categoryId)?.name ?? 'category'}` : ''}:\n${amounts[0].label}: ${peso.format(amounts[0].amount)}\n${amounts[1].label}: ${peso.format(amounts[1].amount)}\nChange: ${difference >= 0 ? '+' : '−'}${peso.format(Math.abs(difference))} (${percentage}).`, result: { metric: 'compare_periods', amount: amounts[1].amount, breakdown: amounts.map((item) => ({ label: item.label, amount: item.amount })) } };
+};
+
 const executeFinanceQuery = async (supabase: { from: (table: string) => any }, workspaceId: string, context: FinanceQueryContext, accounts: Entity[], categories: Entity[]) => {
   const activeAccounts = accounts.filter((item) => item.is_active !== false && (context.spaceScope === 'all' || !context.spaceId || !item.space_id || item.space_id === context.spaceId));
   const allowedAccountIds = context.accountIds === 'all' || !context.accountIds ? activeAccounts.map((item) => item.id) : context.accountIds;
@@ -310,6 +365,62 @@ const executeBudgetQuery = async (
 };
 const managementReply = (intent: MoneyYapIntent) => ({ edit_transaction: 'Open the transaction you want to change, then tap Edit so I update the exact record.', delete_transaction: 'Open the transaction you want to remove, then use Delete so there’s no ambiguity.', manage_account: 'You can manage accounts from Me → Accounts.', manage_category: 'You can manage categories from Me → Categories.', manage_space: 'You can manage Spaces from Me → Spaces.', general_conversation: 'I can record transactions and answer questions using your actual MoneyYap data.', clarification_response: 'I need the original clarification details to continue.', record_transaction: '', query_finances: '' })[intent];
 
+const isScheduledRequest = (message: string) => /\b(schedule|scheduled|upcoming|remind me|recurring|what bills|next credit card payment|after upcoming bills)\b/i.test(message);
+const scheduledInsight = async (supabase: { from: (table: string) => any }, workspaceId: string, selectedSpaceId: string | null, message: string, now: Date) => {
+  const text = normalize(message);
+  const { data: workspace, error: workspaceError } = await supabase.from('workspaces').select('timezone').eq('id',workspaceId).single();
+  if (workspaceError) throw workspaceError;
+  const timeZone = String(workspace?.timezone ?? 'Asia/Manila');
+  const dateParts = new Intl.DateTimeFormat('en-CA',{ timeZone, year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(now);
+  const part = (name: string) => dateParts.find((item) => item.type===name)?.value ?? '01';
+  const today = part('year')+'-'+part('month')+'-'+part('day');
+  const plusDays = (day: string, count: number) => { const date = new Date(day+'T12:00:00Z'); date.setUTCDate(date.getUTCDate()+count); return date.toISOString().slice(0,10); };
+  const isCommand = /\b(schedule|remind me)\b/.test(text) && !/\b(what|which|how much|show|list)\b/.test(text);
+  if (isCommand) {
+    const amount = Number((message.match(/(?:₱|php|p)\s*([\d,]+(?:\.\d{1,2})?)/i) ?? message.match(/\b([\d,]{3,}(?:\.\d{1,2})?)\b/))?.[1]?.replaceAll(',','') ?? 0);
+    const type = /\b(salary|income|receive|received|allowance|revenue)\b/.test(text) ? 'income' : /\b(credit card|card payment)\b/.test(text) ? 'credit_card_payment' : /\b(transfer)\b/.test(text) ? 'transfer' : 'expense';
+    const frequency = /\bevery 2 weeks|biweekly\b/.test(text) ? 'biweekly' : /\bevery 3 months|quarterly\b/.test(text) ? 'quarterly' : /\bevery 6 months|semiannual\b/.test(text) ? 'semiannual' : /\bevery day|daily\b/.test(text) ? 'daily' : /\bevery week|weekly\b/.test(text) ? 'weekly' : /\bevery month|monthly|every \d{1,2}(?:st|nd|rd|th)? of (?:the )?month\b/.test(text) ? 'monthly' : /\bevery year|yearly|annually\b/.test(text) ? 'yearly' : 'once';
+    const ordinal = text.match(/\bevery (\d{1,2})(?:st|nd|rd|th)?\b/);
+    const anchor = ordinal ? Number(ordinal[1]) : Number(today.slice(-2));
+    const monthMention = Object.entries(monthNames).find(([name]) => text.includes(name));
+    const explicitDay = text.match(/\b(?:on )?(\d{1,2})(?:st|nd|rd|th)?\b/);
+    let startsOn = today;
+    if (monthMention && explicitDay) {
+      let year = Number(today.slice(0,4)); const candidate = new Date(Date.UTC(year,monthMention[1]-1,Number(explicitDay[1]))).toISOString().slice(0,10);
+      if (candidate < today) year++;
+      startsOn = new Date(Date.UTC(year,monthMention[1]-1,Number(explicitDay[1]))).toISOString().slice(0,10);
+    } else if (ordinal && frequency==='monthly') {
+      const year=Number(today.slice(0,4)), month=Number(today.slice(5,7));
+      let candidate = new Date(Date.UTC(year,month-1,Math.min(anchor,new Date(Date.UTC(year,month,0)).getUTCDate()))).toISOString().slice(0,10);
+      if (candidate < today) candidate = new Date(Date.UTC(year,month,Math.min(anchor,new Date(Date.UTC(year,month+1,0)).getUTCDate()))).toISOString().slice(0,10);
+      startsOn=candidate;
+    }
+    const name = message.replace(/(?:₱|php|p)\s*[\d,]+(?:\.\d{1,2})?/ig,'').replace(/\b(schedule|remind me to|remind me|every|expense|income|on|of the month|monthly|weekly|daily|yearly)\b/ig,' ').replace(/\b\d{1,2}(?:st|nd|rd|th)?\b/ig,' ').replace(/\s+/g,' ').trim().slice(0,160) || 'Scheduled transaction';
+    return { reply: 'I prepared a schedule for your review. Confirm its amount, accounts, Space, category, date, and reminders before saving. Auto-record stays off unless you opt in.', result: { schedule_draft: { name, type, amount: amount || '', frequency, starts_on: startsOn, anchor_day: anchor, space_id: selectedSpaceId } } };
+  }
+  const { data: schedules, error: scheduleError } = await supabase.from('scheduled_transactions').select('id,name,type,amount,space_id,account_from_id,account_to_id,status').eq('workspace_id',workspaceId);
+  if (scheduleError) throw scheduleError;
+  const visible = (schedules ?? []).filter((item: Record<string, unknown>) => (!selectedSpaceId || item.space_id===selectedSpaceId) && item.status==='active');
+  if (!visible.length) return { reply:'There are no active scheduled transactions in this Space.', result:{ scheduled_count:0 } };
+  const { data: occurrences, error: occurrenceError } = await supabase.from('scheduled_occurrences').select('schedule_id,due_on,status,amount_override').in('schedule_id',visible.map((item: Record<string, unknown>) => item.id)).eq('status','pending').gte('due_on',today).order('due_on').limit(1000);
+  if (occurrenceError) throw occurrenceError;
+  const periodEnd = /\bthis week\b/.test(text) ? plusDays(today,7) : /\bthis month\b/.test(text) ? new Date(Date.UTC(Number(today.slice(0,4)),Number(today.slice(5,7)),0)).toISOString().slice(0,10) : plusDays(today,30);
+  const items = (occurrences ?? []).filter((item: Record<string, unknown>) => String(item.due_on)<=periodEnd).map((item: Record<string, unknown>) => ({ ...item, schedule:visible.find((schedule: Record<string, unknown>) => schedule.id===item.schedule_id) })).filter((item: Record<string, unknown>) => Boolean(item.schedule));
+  const requestedType = /\bcredit card\b/.test(text) ? 'credit_card_payment' : /\bincome\b/.test(text) ? 'income' : null;
+  const matching = requestedType ? items.filter((item: Record<string, unknown>) => (item.schedule as Record<string, unknown>).type===requestedType) : /\bbills?\b/.test(text) ? items.filter((item: Record<string, unknown>) => ['expense','credit_card_payment'].includes(String((item.schedule as Record<string, unknown>).type))) : items;
+  const expense = matching.filter((item: Record<string, unknown>) => (item.schedule as Record<string, unknown>).type==='expense').reduce((sum: number,item: Record<string, unknown>) => sum+Number(item.amount_override ?? (item.schedule as Record<string, unknown>).amount),0);
+  const income = matching.filter((item: Record<string, unknown>) => (item.schedule as Record<string, unknown>).type==='income').reduce((sum: number,item: Record<string, unknown>) => sum+Number(item.amount_override ?? (item.schedule as Record<string, unknown>).amount),0);
+  const cardPayments = matching.filter((item: Record<string, unknown>) => (item.schedule as Record<string, unknown>).type==='credit_card_payment').reduce((sum: number,item: Record<string, unknown>) => sum+Number(item.amount_override ?? (item.schedule as Record<string, unknown>).amount),0);
+  const details = matching.slice(0,5).map((item: Record<string, unknown>) => String(item.due_on)+' · '+String((item.schedule as Record<string, unknown>).name)+' · '+peso.format(Number(item.amount_override ?? (item.schedule as Record<string, unknown>).amount))).join('\n');
+  if (/\bhow much.*left|after upcoming bills\b/.test(text)) {
+    const { data: balances, error: balanceError } = await supabase.from('account_balances').select('type,current_balance').eq('workspace_id',workspaceId).neq('type','credit_card');
+    if (balanceError) throw balanceError;
+    const current = (balances ?? []).reduce((sum: number,item: Record<string, unknown>) => sum+Number(item.current_balance),0);
+    return { reply:'Estimated liquid money after upcoming scheduled items through '+periodEnd+': '+peso.format(current+income-expense-cardPayments)+'. Current visible non-card balances: '+peso.format(current)+'; upcoming income: '+peso.format(income)+'; upcoming expenses: '+peso.format(expense)+'; card payments: '+peso.format(cardPayments)+' (cash outflow, not a new expense). This is a projection, not a bank balance or paid-bill confirmation.', result:{ estimate:current+income-expense-cardPayments,scheduled_income:income,scheduled_expenses:expense,scheduled_card_payments:cardPayments } };
+  }
+  return { reply:(requestedType==='credit_card_payment' ? 'Upcoming card payments' : 'Scheduled items')+' through '+periodEnd+': '+matching.length+'. Estimated expenses: '+peso.format(expense)+'; income: '+peso.format(income)+'.'+(details ? '\n'+details : ''), result:{ scheduled_count:matching.length,scheduled_income:income,scheduled_expenses:expense } };
+};
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders }); if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   try {
@@ -347,10 +458,15 @@ Deno.serve(async (request) => {
     const budgetRequest = isBudgetQuestion(message) || budgetFollowUp;
     if (pending && heuristic.intent === 'clarification_response') route = { ...route, intent: 'clarification_response', confidence: Math.max(route.confidence, heuristic.confidence) };
     if (budgetRequest) route = { ...route, intent: 'query_finances', confidence: Math.max(route.confidence, 0.98) };
+    const scheduleRequest = isScheduledRequest(message);
+    if (scheduleRequest) route = { ...route, intent: 'query_finances', confidence: Math.max(route.confidence, 0.98) };
     const pendingAssistantWasTransaction = Boolean(pending && recent.some((item) => item.role === 'assistant' && item.message_type === 'clarification' && item.intent === 'record_transaction'));
     const isTransactionClarification = route.intent === 'clarification_response' && Boolean(transactionPending || pendingAssistantWasTransaction);
     let reply = route.reply ?? ''; let transaction: Record<string, unknown> | null = null; let transactions: Record<string, unknown>[] = []; let queryContext: FinanceQueryContext | null = null; let queryResult: Record<string, unknown> | null = null; let clarification: Record<string, unknown> | null = null; let pendingClarificationState: Record<string, unknown> | null = null; let messageType = 'text'; const now = new Date();
-    if (route.intent === 'query_finances' || (route.intent === 'clarification_response' && previousContext.metric && !isTransactionClarification)) {
+    if (scheduleRequest) {
+      const insight = await scheduledInsight(supabase, workspaceId, selectedSpaceId, message, now);
+      reply = insight.reply; queryResult = insight.result; messageType = 'finance_answer';
+    } else if (route.intent === 'query_finances' || (route.intent === 'clarification_response' && previousContext.metric && !isTransactionClarification)) {
       if (budgetRequest) {
         queryContext = mergeFinanceQueryContext(previousContext, { metric: 'budget_status', spaceId: selectedSpaceId });
         const result = await executeBudgetQuery(supabase, workspaceId, message, categories, selectedSpaceId, now, timezone);
@@ -364,7 +480,7 @@ Deno.serve(async (request) => {
       const resolvedMetric = changes.metric ?? previousContext.metric ?? 'expense_total'; const queryCategoryType = patch.transaction_type === 'income' || resolvedMetric === 'income_total' ? 'income' : 'expense'; const querySpaceId = changes.spaceId ?? previousContext.spaceId ?? defaultSpace?.id; const eligibleCategories = categories.filter((item) => item.type === queryCategoryType && (changes.spaceScope === 'all' || !querySpaceId || item.space_id === querySpaceId));
       const category = findEntity(patch.category_name, eligibleCategories); if (category) changes.categoryId = category.id; if (patch.exclude_category_names.length) changes.excludeCategoryIds = patch.exclude_category_names.map((name) => findEntity(name, eligibleCategories)?.id).filter((id): id is string => Boolean(id)); if (patch.merchant) changes.merchant = patch.merchant; if (patch.counterparty) changes.counterparty = patch.counterparty; if (patch.grouping) changes.grouping = patch.grouping;
       changes.dateRange = resolveDatePatch(patch, now, timezone, previousContext.dateRange); queryContext = mergeFinanceQueryContext(previousContext, changes); if (patch.comparison === 'previous_period' && queryContext.dateRange) queryContext.comparison = { first: previousPeriod(queryContext.dateRange), second: queryContext.dateRange };
-      if (!clarification) { queryResult = await executeFinanceQuery(supabase, workspaceId, queryContext, accounts, categories); reply = buildFinanceReply(queryContext, queryResult as { amount: number; count: number; breakdown: { label: string; amount: number }[] }, accounts, categories, timezone); messageType = 'finance_answer'; } else { reply = String(clarification.question); messageType = 'clarification'; }
+      if (!clarification) { const insight = await reportInsight(supabase, workspaceId, message, queryContext, accounts, categories, now, timezone); if (insight) { queryResult = insight.result; reply = insight.reply; } else { queryResult = await executeFinanceQuery(supabase, workspaceId, queryContext, accounts, categories); reply = buildFinanceReply(queryContext, queryResult as { amount: number; count: number; breakdown: { label: string; amount: number }[] }, accounts, categories, timezone); } messageType = 'finance_answer'; } else { reply = String(clarification.question); messageType = 'clarification'; }
       }
     } else if (route.intent === 'record_transaction' || isTransactionClarification) {
       const originalMessage = isTransactionClarification ? originalMessageForClarification(pending, recent, message) : message;
