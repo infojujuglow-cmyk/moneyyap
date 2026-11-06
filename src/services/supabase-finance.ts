@@ -15,6 +15,9 @@ export interface FinanceSnapshot {
 
 const mapAccount = (row: Record<string, unknown>): Account => ({
   id: String(row.id), name: String(row.name), type: row.type as Account['type'], institution: row.institution as string | null,
+  visualType: (row.visual_type ?? (row.type === 'credit_card' ? 'credit_card' : row.type === 'ewallet' ? 'ewallet' : row.type === 'cash' ? 'cash' : row.type === 'bank' ? 'savings' : 'other')) as Account['visualType'],
+  providerKey: row.provider_key as string | null, accountLast4: row.account_last4 as string | null,
+  creditLimit: row.credit_limit == null ? null : Number(row.credit_limit),
   currency: String(row.currency), openingBalance: Number(row.opening_balance), balance: Number(row.current_balance ?? row.opening_balance),
   ownerUserId: row.owner_user_id as string | null, spaceId: row.space_id as string | null,
   accent: String(row.accent ?? '#35D6A2'), isActive: Boolean(row.is_active),

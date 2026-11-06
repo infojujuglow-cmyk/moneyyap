@@ -474,7 +474,8 @@ export function FinanceProvider({ children }: PropsWithChildren) {
     {
       const { error } = await supabase.from('accounts').insert({
         workspace_id: workspaceId, space_id: account.spaceId, owner_user_id: account.ownerUserId, name: account.name, type: account.type,
-        institution: account.institution, currency: account.currency, opening_balance: account.openingBalance, accent: account.accent, is_active: account.isActive,
+        institution: account.institution, provider_key: account.providerKey, visual_type: account.visualType, account_last4: account.accountLast4,
+        credit_limit: account.creditLimit, currency: account.currency, opening_balance: account.openingBalance, accent: account.accent, is_active: account.isActive,
       });
       if (error) throw error;
     }
@@ -492,6 +493,7 @@ export function FinanceProvider({ children }: PropsWithChildren) {
     const payload: Record<string, unknown> = {};
     const fields: [keyof Omit<Account, 'id' | 'balance'>, string][] = [
       ['name', 'name'], ['type', 'type'], ['institution', 'institution'], ['currency', 'currency'],
+      ['visualType', 'visual_type'], ['providerKey', 'provider_key'], ['accountLast4', 'account_last4'], ['creditLimit', 'credit_limit'],
       ['openingBalance', 'opening_balance'], ['ownerUserId', 'owner_user_id'], ['spaceId', 'space_id'],
       ['accent', 'accent'], ['isActive', 'is_active'],
     ];

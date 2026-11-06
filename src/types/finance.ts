@@ -1,4 +1,5 @@
 export type AccountType = 'cash' | 'bank' | 'credit_card' | 'ewallet' | 'other';
+export type AccountVisualType = 'debit' | 'checking' | 'savings' | 'credit_card' | 'ewallet' | 'cash' | 'other';
 export type TransactionType = 'expense' | 'income' | 'transfer' | 'credit_card_payment' | 'refund';
 export type FinancialEffect = 'expense' | 'income' | 'internal_transfer' | 'adjustment';
 export type PaymentRail = 'bank_transfer' | 'instapay' | 'pesonet' | 'gcash' | 'maya' | 'cash' | 'debit_card' | 'credit_card' | 'other' | 'unknown';
@@ -49,7 +50,11 @@ export interface Account {
   id: string;
   name: string;
   type: AccountType;
+  visualType: AccountVisualType;
   institution: string | null;
+  providerKey: string | null;
+  accountLast4: string | null;
+  creditLimit: number | null;
   currency: string;
   openingBalance: number;
   balance: number;

@@ -8,6 +8,7 @@ import { accountReconciliationSummary } from '@/lib/reconciliation';
 import { isReportKey, moreReportItems, primaryReportItems, type ReportKey } from '@/lib/reports';
 import { amountColor, colors, formatPeso, radii, spacing, typography } from '@/theme';
 import type { Account } from '@/types/finance';
+import { ProviderMark } from './AccountVisualCard';
 import { AppText, Avatar, Wordmark } from './ui';
 
 const mainItems = [
@@ -57,14 +58,6 @@ export function DesktopSidebar() {
     </Pressable>;
   };
 
-  const accountIcon = (account: Account): keyof typeof Ionicons.glyphMap => account.type === 'credit_card'
-    ? 'card-outline'
-    : account.type === 'cash'
-      ? 'cash-outline'
-      : account.type === 'ewallet'
-        ? 'phone-portrait-outline'
-        : 'business-outline';
-
   return <View style={styles.sidebar}>
     <View style={styles.brand}><Wordmark small /></View>
     <Pressable onPress={() => router.push('/workspaces' as never)} style={({ hovered }) => [styles.workspace, interactionTransition, hovered && styles.navHover]} accessibilityRole="button" accessibilityLabel="Switch workspace">
@@ -96,7 +89,7 @@ export function DesktopSidebar() {
                 const lastReconciled = reconciliation.lastReconciledAt ? new Date(reconciliation.lastReconciledAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never';
                 return <Pressable key={account.id} accessibilityRole="link" accessibilityLabel={`${account.name}, ${reconciliation.fullyReconciled ? 'fully reconciled' : 'not fully reconciled'}, last reconciled ${lastReconciled}`} accessibilityState={{ selected }} onPress={() => router.push(`/account/${account.id}`)} style={({ hovered, pressed }) => [styles.accountItem, interactionTransition, reconciliation.fullyReconciled && styles.accountFullyReconciled, selected && styles.accountSelected, (hovered || pressed) && !selected && styles.navHover]}>
                   {selected && <View style={styles.activeIndicator} />}
-                  <View style={[styles.accountIcon, { backgroundColor: `${account.accent}14` }]}><Ionicons name={accountIcon(account)} size={14} color={account.accent} /></View>
+                  <ProviderMark account={account} compact />
                   <View style={styles.accountCopy}><AppText variant="caption" numberOfLines={1} style={[styles.accountName, selected && styles.selectedText]}>{account.name}</AppText>{reconciliation.fullyReconciled && <Ionicons name="checkmark-circle" size={14} color={colors.mintDeep} />}<AppText variant="caption" numberOfLines={1} style={[styles.accountBalance, { color: amountColor(account.type === 'credit_card' ? -Math.abs(account.balance) : account.balance) }]}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText></View>
                 </Pressable>;
               })}</View>}
@@ -202,7 +195,6 @@ const styles = StyleSheet.create({
   accountItem: { minHeight: 42, paddingHorizontal: spacing.sm, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, position: 'relative', overflow: 'hidden' },
   accountSelected: { backgroundColor: colors.mintWash },
   accountFullyReconciled: { backgroundColor: '#F3FCF8' },
-  accountIcon: { width: 26, height: 26, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   accountCopy: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   accountName: { flex: 1, minWidth: 0, color: colors.slateDark, fontFamily: typography.medium, fontSize: 12, lineHeight: 16 },
   accountBalance: { flexShrink: 0, maxWidth: 94, color: colors.neutralAmount, fontFamily: typography.semibold, fontSize: 11.5, lineHeight: 16, textAlign: 'right' },

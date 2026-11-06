@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Screen } from '@/components/Screen';
+import { AccountVisualCard, ProviderMark } from '@/components/AccountVisualCard';
 import { AppText, Button, IconCircle, SectionHeader, Surface } from '@/components/ui';
 import { useFinance } from '@/context/FinanceContext';
 import { accountReconciliationSummary } from '@/lib/reconciliation';
@@ -35,7 +36,7 @@ function AccountGroup({ title, accounts, transactions, desktop }: { title: strin
       <SectionHeader title={title} />
       {institutions.map(({ name, accounts: institutionAccounts }) => (
         <View key={name} style={styles.institutionGroup}>
-          <AppText variant="eyebrow" style={styles.institutionLabel}>{name}</AppText>
+          <View style={styles.institutionHeading}>{institutionAccounts[0] && <ProviderMark account={institutionAccounts[0]} compact />}<AppText variant="eyebrow" style={styles.institutionLabel}>{name}</AppText></View>
           <View style={[styles.cards, desktop && styles.desktopCards]}>{institutionAccounts.map((account) => <AccountCard key={account.id} account={account} transactions={transactions} desktop={desktop} />)}</View>
         </View>
       ))}
@@ -62,15 +63,13 @@ function AccountCard({ account, transactions, desktop }: { account: Account; tra
     ? new Date(reconciliation.lastReconciledAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
     : null;
   return (
-    <Pressable onPress={() => router.push(`/account/${account.id}`)} style={desktop && styles.desktopCardWrap}>
-      <Surface style={[styles.card, !account.isActive ? styles.archived : {}]}>
-        <View style={styles.accountTop}>
-          <View style={[styles.institution, { backgroundColor: `${account.accent}18` }]}><Ionicons name={account.type === 'credit_card' ? 'card-outline' : account.type === 'cash' ? 'cash-outline' : account.type === 'ewallet' ? 'phone-portrait-outline' : 'business-outline'} size={22} color={account.accent} /></View>
-          <View style={styles.accountCopy}><AppText variant="bodyMedium">{account.name}</AppText><AppText variant="caption" style={styles.muted}>{account.isActive ? `${account.type === 'credit_card' ? 'Credit card · liability' : account.type.replace('_', ' ')} · ${account.ownerUserId ? 'Private' : 'Shared'}` : 'Removed · history preserved'}</AppText>{account.isActive && reconciliation.transactionCount > 0 && <View style={styles.reconciliationStatus}><Ionicons name={reconciliation.fullyReconciled ? 'checkmark-circle' : 'time-outline'} size={13} color={reconciliation.fullyReconciled ? colors.mintDeep : colors.slate} /><AppText variant="caption" numberOfLines={1} style={reconciliation.fullyReconciled ? styles.reconciledText : styles.muted}>{reconciliation.fullyReconciled ? 'Fully reconciled' : `Last reconciled ${lastReconciled ?? 'never'}`}</AppText></View>}</View>
-          <View style={styles.balance}><AppText variant="h3" style={{ color: amountColor(account.type === 'credit_card' ? -Math.abs(account.balance) : account.balance) }}>{account.type === 'credit_card' ? formatPeso(Math.abs(account.balance)) : formatPeso(account.balance)}</AppText><Ionicons name="chevron-forward" size={16} color={colors.slate} /></View>
-        </View>
-        {recent && <View style={styles.activity}><AppText variant="caption" style={styles.muted}>Latest activity</AppText><AppText variant="caption">{recent.merchant ?? recent.type.replaceAll('_', ' ')} · <AppText variant="caption" style={{ color: recent.financialEffect === 'income' ? colors.income : recent.financialEffect === 'expense' ? colors.expense : colors.neutralAmount }}>{formatPeso(recent.amount)}</AppText></AppText></View>}
-      </Surface>
+    <Pressable onPress={() => router.push(`/account/${account.id}`)} style={({ pressed }) => [styles.cardWrap, desktop && styles.desktopCardWrap, pressed && styles.pressed]}>
+      <AccountVisualCard account={account} />
+      <View style={styles.cardMeta}>
+        <View style={styles.metaTop}><View style={styles.accountIdentity}><AppText variant="bodyMedium" numberOfLines={1}>{account.name}</AppText><AppText variant="caption" style={styles.muted}>{account.isActive ? (account.ownerUserId ? 'Private account' : 'Shared account') : 'Removed · history preserved'}</AppText></View><Ionicons name="chevron-forward" size={17} color={colors.slate} /></View>
+        {account.isActive && reconciliation.transactionCount > 0 && <View style={styles.reconciliationStatus}><Ionicons name={reconciliation.fullyReconciled ? 'checkmark-circle' : 'time-outline'} size={13} color={reconciliation.fullyReconciled ? colors.mintDeep : colors.slate} /><AppText variant="caption" numberOfLines={1} style={reconciliation.fullyReconciled ? styles.reconciledText : styles.muted}>{reconciliation.fullyReconciled ? 'Fully reconciled' : `Last reconciled ${lastReconciled ?? 'never'}`}</AppText></View>}
+        {recent && <View style={styles.activity}><AppText variant="caption" style={styles.muted}>Latest</AppText><AppText variant="caption" numberOfLines={1} style={styles.latest}>{recent.merchant ?? recent.type.replaceAll('_', ' ')} · <AppText variant="caption" style={{ color: recent.financialEffect === 'income' ? colors.income : recent.financialEffect === 'expense' ? colors.expense : colors.neutralAmount }}>{formatPeso(recent.amount)}</AppText></AppText></View>}
+      </View>
     </Pressable>
   );
 }
@@ -81,17 +80,18 @@ const styles = StyleSheet.create({
   muted: { color: colors.slate },
   group: { gap: spacing.md },
   institutionGroup: { gap: spacing.sm },
-  institutionLabel: { color: colors.slate, marginLeft: spacing.xs },
+  institutionHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginLeft: spacing.xs },
+  institutionLabel: { color: colors.slate },
   cards: { gap: spacing.md },
   desktopCards: { flexDirection: 'row', flexWrap: 'wrap' },
-  desktopCardWrap: { width: '49%' },
-  card: { padding: spacing.lg, gap: spacing.lg },
-  accountTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  institution: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  accountCopy: { flex: 1, gap: 2 },
+  cardWrap: { borderRadius: 24, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+  desktopCardWrap: { width: '48.8%' },
+  pressed: { opacity: 0.86, transform: [{ scale: 0.992 }] },
+  cardMeta: { padding: spacing.md, gap: spacing.sm },
+  metaTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  accountIdentity: { flex: 1, minWidth: 0 },
   reconciliationStatus: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 },
   reconciledText: { color: colors.mintDeep },
-  balance: { alignItems: 'flex-end' },
-  activity: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md, flexDirection: 'row', justifyContent: 'space-between' },
-  archived: { opacity: 0.65 },
+  activity: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm, flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
+  latest: { flex: 1, textAlign: 'right' },
 });

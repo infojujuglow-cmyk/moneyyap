@@ -1,6 +1,8 @@
-import { StyleSheet, View } from 'react-native';
+import type { ComponentProps, ComponentType } from 'react';
+import { useState } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
-import { colors, formatCompactPeso, spacing } from '@/theme';
+import { colors, formatCompactPeso, formatPeso, radii, shadows, spacing } from '@/theme';
 import type { MonthlyPoint } from '@/types/finance';
 import { AppText } from './ui';
 
@@ -51,20 +53,36 @@ export function CashFlowChart({ data, width, height = 220 }: { data: MonthlyPoin
   );
 }
 
+type HoverCircleProps = ComponentProps<typeof Circle> & { onMouseEnter?: () => void; onMouseLeave?: () => void };
+const HoverCircle = Circle as unknown as ComponentType<HoverCircleProps>;
+
 export function DonutChart({ segments, size = 132, selectedIndex = null, onSegmentPress }: { segments: { amount: number; color: string; label?: string }[]; size?: number; selectedIndex?: number | null; onSegmentPress?: (index: number) => void }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const stroke = Math.max(16, Math.round(size * 0.105));
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const total = segments.reduce((sum, item) => sum + item.amount, 0) || 1;
+  const activeIndex = hoveredIndex ?? selectedIndex;
+  const hovered = hoveredIndex === null ? null : segments[hoveredIndex];
+  const hoveredStart = hoveredIndex === null ? 0 : segments.slice(0, hoveredIndex).reduce((sum, item) => sum + item.amount, 0) / total;
+  const hoveredShare = hovered ? hovered.amount / total : 0;
+  const hoveredAngle = (-90 + hoveredStart * 360 + hoveredShare * 180) * Math.PI / 180;
+  const tooltipWidth = Math.min(176, Math.max(140, size - 16));
+  const tooltipLeft = Math.max(0, Math.min(size - tooltipWidth, size / 2 + Math.cos(hoveredAngle) * radius * 0.72 - tooltipWidth / 2));
+  const tooltipTop = Math.max(8, Math.min(size - 76, size / 2 + Math.sin(hoveredAngle) * radius * 0.72 - 38));
   return (
-    <Svg width={size} height={size}>
-      <Circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={colors.surface} strokeWidth={stroke} />
-      {segments.map((segment, index) => {
-        const length = (segment.amount / total) * circumference;
-        const offset = -segments.slice(0, index).reduce((sum, item) => sum + (item.amount / total) * circumference, 0);
-        return <Circle key={`${segment.color}-${index}`} accessible={Boolean(onSegmentPress)} accessibilityLabel={segment.label ? `${segment.label}, ${Math.round(segment.amount / total * 100)} percent` : undefined} cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={segment.color} strokeWidth={selectedIndex === index ? stroke + 4 : stroke} strokeDasharray={`${Math.max(0, length - 3)} ${circumference}`} strokeDashoffset={offset} strokeLinecap="round" opacity={selectedIndex === null || selectedIndex === index ? 1 : 0.42} transform={`rotate(-90 ${size / 2} ${size / 2})`} onPress={onSegmentPress ? () => onSegmentPress(index) : undefined} />;
-      })}
-    </Svg>
+    <View style={{ width: size, height: size }}>
+      <Svg width={size} height={size}>
+        <Circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={colors.surface} strokeWidth={stroke} />
+        {segments.map((segment, index) => {
+          const length = (segment.amount / total) * circumference;
+          const offset = -segments.slice(0, index).reduce((sum, item) => sum + (item.amount / total) * circumference, 0);
+          const hoverProps = Platform.OS === 'web' ? { onMouseEnter: () => setHoveredIndex(index), onMouseLeave: () => setHoveredIndex(null) } : {};
+          return <HoverCircle {...hoverProps} key={`${segment.color}-${index}`} accessible={Boolean(onSegmentPress)} accessibilityLabel={`${segment.label ?? 'Value'}, ${formatPeso(segment.amount)}, ${Math.round(segment.amount / total * 100)} percent`} cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={segment.color} strokeWidth={activeIndex === index ? stroke + 4 : stroke} strokeDasharray={`${Math.max(0, length - 3)} ${circumference}`} strokeDashoffset={offset} strokeLinecap="round" opacity={activeIndex === null || activeIndex === index ? 1 : 0.42} transform={`rotate(-90 ${size / 2} ${size / 2})`} onPress={onSegmentPress ? () => onSegmentPress(index) : undefined} />;
+        })}
+      </Svg>
+      {hovered && <View pointerEvents="none" style={[styles.donutTooltip, { width: tooltipWidth, left: tooltipLeft, top: tooltipTop, borderColor: `${hovered.color}66` }]}><View style={[styles.tooltipDot, { backgroundColor: hovered.color }]} /><View style={styles.tooltipCopy}><AppText variant="caption" numberOfLines={1} style={styles.tooltipLabel}>{hovered.label ?? 'Value'}</AppText><AppText variant="bodyMedium" numberOfLines={1} style={styles.tooltipValue}>{formatPeso(hovered.amount)}</AppText><AppText variant="caption" style={styles.tooltipPercent}>{Math.round(hovered.amount / total * 100)}%</AppText></View></View>}
+    </View>
   );
 }
 
@@ -84,4 +102,10 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   track: { height: 6, borderRadius: 3, backgroundColor: colors.surface, overflow: 'hidden' },
   fill: { height: 6, borderRadius: 3 },
+  donutTooltip: { position: 'absolute', zIndex: 10, minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.md, borderWidth: 1, backgroundColor: colors.white, ...shadows.lift },
+  tooltipDot: { width: 9, height: 9, borderRadius: 5 },
+  tooltipCopy: { flex: 1, minWidth: 0, paddingRight: 34 },
+  tooltipLabel: { color: colors.slate, fontSize: 11 },
+  tooltipValue: { color: colors.neutralAmount },
+  tooltipPercent: { position: 'absolute', right: 0, top: 0, color: colors.slate },
 });
